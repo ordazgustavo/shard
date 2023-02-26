@@ -6,6 +6,7 @@ pub enum TokenKind {
 
     Ident(String),
     String(String),
+    Integer(String),
 
     Let,
     Fn,
@@ -120,6 +121,7 @@ impl<'a> Iterator for LexerIter<'a> {
             '=' => as_token(&mut self.src, TokenKind::Equal),
             ';' => as_token(&mut self.src, TokenKind::Semicolon),
             '"' => Some(Ok(string(&mut self.src))),
+            '0'..='9' => Some(Ok(number(&mut self.src))),
             c @ '_' | c if c.is_alphabetic() => Some(Ok(ident(&mut self.src))),
             _ => Some(Err(LexError::UnknownToken(*idx))),
         }
@@ -173,6 +175,22 @@ fn string(src: &mut Peekable<CharIndices>) -> Token {
     Token::new(TokenKind::String(s), start..end)
 }
 
+#[inline]
+fn number(src: &mut Peekable<CharIndices>) -> Token {
+    let (start, ch) = src.next().unwrap();
+    let mut end = 0;
+
+    let mut s = String::new();
+    s.push(ch);
+
+    while let Some((idx, ch)) = src.next_if(|(_, ch)| ch.is_digit(10)) {
+        s.push(ch);
+        end = idx + 1;
+    }
+
+    Token::new(TokenKind::Integer(s), start..end)
+}
+
 #[cfg(test)]
 mod tests {
     use super::TokenKind;
@@ -205,21 +223,23 @@ mod tests {
     lexer_test!(FAIL: handles_extraneous_token, "@");
     lexer_test!(FAIL: handles_partially_consumend_input, "let abc @");
 
-    lexer_test!(handles_rparen_punctuation, "(" => TokenKind::RParen);
-    lexer_test!(handles_lparen_punctuation, ")" => TokenKind::LParen);
-    lexer_test!(handles_rbrace_punctuation, "{" => TokenKind::RBrace);
-    lexer_test!(handles_lbrace_punctuation, "}" => TokenKind::LBrace);
-    lexer_test!(handles_rbracket_punctuation, "[" => TokenKind::RBracket);
-    lexer_test!(handles_lbracket_punctuation, "]" => TokenKind::LBracket);
-    lexer_test!(handles_equal_punctuation, "=" => TokenKind::Equal);
-    lexer_test!(handles_semicolon_punctuation, ";" => TokenKind::Semicolon);
+    lexer_test!(rparen_punctuation, "(" => TokenKind::RParen);
+    lexer_test!(lparen_punctuation, ")" => TokenKind::LParen);
+    lexer_test!(rbrace_punctuation, "{" => TokenKind::RBrace);
+    lexer_test!(lbrace_punctuation, "}" => TokenKind::LBrace);
+    lexer_test!(rbracket_punctuation, "[" => TokenKind::RBracket);
+    lexer_test!(lbracket_punctuation, "]" => TokenKind::LBracket);
+    lexer_test!(equal_punctuation, "=" => TokenKind::Equal);
+    lexer_test!(semicolon_punctuation, ";" => TokenKind::Semicolon);
 
-    lexer_test!(handles_let_keyword, "let" => TokenKind::Let);
-    lexer_test!(handles_fn_keyword, "fn" => TokenKind::Fn);
-    lexer_test!(handles_type_keyword, "type" => TokenKind::Type);
+    lexer_test!(let_keyword, "let" => TokenKind::Let);
+    lexer_test!(fn_keyword, "fn" => TokenKind::Fn);
+    lexer_test!(type_keyword, "type" => TokenKind::Type);
 
-    lexer_test!(handles_identifiers, "abc" => TokenKind::Ident("abc".to_string()));
-    lexer_test!(handles_string, "\"abc\"" => TokenKind::String("abc".to_string()));
-    lexer_test!(handles_string_with_leading_number, "\"123abc\"" => TokenKind::String("123abc".to_string()));
-    lexer_test!(handles_string_with_special_chars, "\"123\nabc\"" => TokenKind::String("123\nabc".to_string()));
+    lexer_test!(identifiers, "abc" => TokenKind::Ident("abc".to_string()));
+    lexer_test!(string, "\"abc\"" => TokenKind::String("abc".to_string()));
+    lexer_test!(string_with_leading_number, "\"123abc\"" => TokenKind::String("123abc".to_string()));
+    lexer_test!(string_with_special_chars, "\"123\nabc\"" => TokenKind::String("123\nabc".to_string()));
+    lexer_test!(integer, "7" => TokenKind::Integer("7".to_string()));
+    lexer_test!(integer_multiple_digits, "42069" => TokenKind::Integer("42069".to_string()));
 }
