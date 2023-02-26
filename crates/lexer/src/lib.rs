@@ -1,10 +1,4 @@
-use std::{
-    borrow::Borrow,
-    fmt::Display,
-    iter::{Enumerate, Peekable},
-    ops::Range,
-    str::Chars,
-};
+use std::{borrow::Borrow, fmt::Display, iter::Peekable, ops::Range, str::CharIndices};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
@@ -58,7 +52,7 @@ impl Token {
 #[derive(Debug)]
 pub enum LexError {
     Empty,
-    Unconsumed(usize),
+    UnknownToken(usize),
 }
 
 pub struct Lexer<'a> {
@@ -92,13 +86,13 @@ impl<'a> Lexer<'a> {
 }
 
 struct LexerIter<'a> {
-    src: Peekable<Enumerate<Chars<'a>>>,
+    src: Peekable<CharIndices<'a>>,
 }
 
 impl<'a> LexerIter<'a> {
     fn new(src: &'a str) -> Self {
         Self {
-            src: src.chars().enumerate().peekable(),
+            src: src.char_indices().peekable(),
         }
     }
 }
@@ -124,22 +118,19 @@ impl<'a> Iterator for LexerIter<'a> {
             ']' => as_token(&mut self.src, TokenKind::LBracket),
             ';' => as_token(&mut self.src, TokenKind::Semicolon),
             c @ '_' | c if c.is_alphabetic() => Some(Ok(ident(&mut self.src))),
-            _ => Some(Err(LexError::Unconsumed(*idx))),
+            _ => Some(Err(LexError::UnknownToken(*idx))),
         }
     }
 }
 
 #[inline]
-fn as_token(
-    src: &mut Peekable<Enumerate<Chars>>,
-    kind: TokenKind,
-) -> Option<Result<Token, LexError>> {
+fn as_token(src: &mut Peekable<CharIndices>, kind: TokenKind) -> Option<Result<Token, LexError>> {
     src.next()
         .map(|(idx, _)| Ok(Token::new(kind, idx..idx + 1)))
 }
 
 #[inline]
-fn ident(src: &mut Peekable<Enumerate<Chars>>) -> Token {
+fn ident(src: &mut Peekable<CharIndices>) -> Token {
     let (start, ch) = src.next().unwrap();
     let mut end = 0;
 
@@ -168,7 +159,7 @@ fn ident(src: &mut Peekable<Enumerate<Chars>>) -> Token {
 }
 
 #[inline]
-fn consume_whitespace(src: &mut Peekable<Enumerate<Chars>>) {
+fn consume_whitespace(src: &mut Peekable<CharIndices>) {
     loop {
         let Some((_, ch)) = src.peek() else {break};
         if ch.is_whitespace() {
@@ -181,6 +172,7 @@ fn consume_whitespace(src: &mut Peekable<Enumerate<Chars>>) {
 
 #[cfg(test)]
 mod tests {
+    use super::TokenKind;
     macro_rules! lexer_test {
         (FAIL: $name:ident, $src:expr) => {
             #[test]
@@ -210,11 +202,17 @@ mod tests {
     lexer_test!(FAIL: handles_extraneous_token, "@");
     lexer_test!(FAIL: handles_partially_consumend_input, "let abc @");
 
-    lexer_test!(handles_semicolon_punctuation, ";" => super::TokenKind::Semicolon);
+    lexer_test!(handles_rparen_punctuation, "(" => TokenKind::RParen);
+    lexer_test!(handles_lparen_punctuation, ")" => TokenKind::LParen);
+    lexer_test!(handles_rbrace_punctuation, "{" => TokenKind::RBrace);
+    lexer_test!(handles_lbrace_punctuation, "}" => TokenKind::LBrace);
+    lexer_test!(handles_rbracket_punctuation, "[" => TokenKind::RBracket);
+    lexer_test!(handles_lbracket_punctuation, "]" => TokenKind::LBracket);
+    lexer_test!(handles_semicolon_punctuation, ";" => TokenKind::Semicolon);
 
-    lexer_test!(handles_let_keyword, "let" => super::TokenKind::Let);
-    lexer_test!(handles_fn_keyword, "fn" => super::TokenKind::Fn);
-    lexer_test!(handles_type_keyword, "type" => super::TokenKind::Type);
+    lexer_test!(handles_let_keyword, "let" => TokenKind::Let);
+    lexer_test!(handles_fn_keyword, "fn" => TokenKind::Fn);
+    lexer_test!(handles_type_keyword, "type" => TokenKind::Type);
 
-    lexer_test!(handles_identifiers, "abc" => super::TokenKind::Ident("abc".to_string()));
+    lexer_test!(handles_identifiers, "abc" => TokenKind::Ident("abc".to_string()));
 }
