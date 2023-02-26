@@ -107,7 +107,8 @@ impl<'a> Iterator for LexerIter<'a> {
 
         match ch {
             c if c.is_whitespace() => {
-                consume_whitespace(&mut self.src);
+                // TODO: Is there a better way to consume the iterator conditionally?
+                while self.src.next_if(|(_, ch)| ch.is_whitespace()).is_some() {}
                 self.next()
             }
             '(' => as_token(&mut self.src, TokenKind::RParen),
@@ -137,15 +138,9 @@ fn ident(src: &mut Peekable<CharIndices>) -> Token {
     let mut id = String::new();
     id.push(ch);
 
-    loop {
-        let Some((_, ch)) = src.peek() else {break};
-        if *ch == '_' || ch.is_alphanumeric() {
-            let (idx, ch) = src.next().unwrap();
-            id.push(ch);
-            end = idx + 1;
-        } else {
-            break;
-        }
+    while let Some((idx, ch)) = src.next_if(|(_, ch)| *ch == '_' || ch.is_alphanumeric()) {
+        id.push(ch);
+        end = idx + 1;
     }
 
     let range = start..end;
@@ -155,18 +150,6 @@ fn ident(src: &mut Peekable<CharIndices>) -> Token {
         "fn" => Token::new(TokenKind::Fn, range),
         "type" => Token::new(TokenKind::Type, range),
         _ => Token::new(id.into(), range),
-    }
-}
-
-#[inline]
-fn consume_whitespace(src: &mut Peekable<CharIndices>) {
-    loop {
-        let Some((_, ch)) = src.peek() else {break};
-        if ch.is_whitespace() {
-            src.next();
-        } else {
-            break;
-        }
     }
 }
 
