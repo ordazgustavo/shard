@@ -5,6 +5,7 @@ pub enum TokenKind {
     Eof,
 
     Ident(String),
+    String(String),
 
     Let,
     Fn,
@@ -16,6 +17,7 @@ pub enum TokenKind {
     LBrace,
     RBracket,
     LBracket,
+    Equal,
     Semicolon,
 }
 
@@ -101,9 +103,7 @@ impl<'a> Iterator for LexerIter<'a> {
     type Item = Result<Token, LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self.src.peek();
-
-        let Some((idx, ch)) = next else { return None };
+        let Some((idx, ch)) = self.src.peek() else { return None };
 
         match ch {
             c if c.is_whitespace() => {
@@ -117,7 +117,9 @@ impl<'a> Iterator for LexerIter<'a> {
             '}' => as_token(&mut self.src, TokenKind::LBrace),
             '[' => as_token(&mut self.src, TokenKind::RBracket),
             ']' => as_token(&mut self.src, TokenKind::LBracket),
+            '=' => as_token(&mut self.src, TokenKind::Equal),
             ';' => as_token(&mut self.src, TokenKind::Semicolon),
+            '"' => Some(Ok(string(&mut self.src))),
             c @ '_' | c if c.is_alphabetic() => Some(Ok(ident(&mut self.src))),
             _ => Some(Err(LexError::UnknownToken(*idx))),
         }
@@ -151,6 +153,24 @@ fn ident(src: &mut Peekable<CharIndices>) -> Token {
         "type" => Token::new(TokenKind::Type, range),
         _ => Token::new(id.into(), range),
     }
+}
+
+#[inline]
+fn string(src: &mut Peekable<CharIndices>) -> Token {
+    let (start, _) = src.next().unwrap();
+    let mut end = 0;
+
+    let mut s = String::new();
+
+    for (idx, ch) in src {
+        end = idx + 1;
+        if ch == '"' {
+            break;
+        }
+        s.push(ch);
+    }
+
+    Token::new(TokenKind::String(s), start..end)
 }
 
 #[cfg(test)]
@@ -191,6 +211,7 @@ mod tests {
     lexer_test!(handles_lbrace_punctuation, "}" => TokenKind::LBrace);
     lexer_test!(handles_rbracket_punctuation, "[" => TokenKind::RBracket);
     lexer_test!(handles_lbracket_punctuation, "]" => TokenKind::LBracket);
+    lexer_test!(handles_equal_punctuation, "=" => TokenKind::Equal);
     lexer_test!(handles_semicolon_punctuation, ";" => TokenKind::Semicolon);
 
     lexer_test!(handles_let_keyword, "let" => TokenKind::Let);
@@ -198,4 +219,7 @@ mod tests {
     lexer_test!(handles_type_keyword, "type" => TokenKind::Type);
 
     lexer_test!(handles_identifiers, "abc" => TokenKind::Ident("abc".to_string()));
+    lexer_test!(handles_string, "\"abc\"" => TokenKind::String("abc".to_string()));
+    lexer_test!(handles_string_with_leading_number, "\"123abc\"" => TokenKind::String("123abc".to_string()));
+    lexer_test!(handles_string_with_special_chars, "\"123\nabc\"" => TokenKind::String("123\nabc".to_string()));
 }
