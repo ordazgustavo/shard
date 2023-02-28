@@ -7,10 +7,12 @@ pub enum TokenKind {
     Ident(String),
     String(String),
     Integer(String),
+    Float(String),
 
     Let,
     Fn,
     Type,
+    Struct,
 
     RParen,
     LParen,
@@ -19,7 +21,15 @@ pub enum TokenKind {
     RBracket,
     LBracket,
     Equal,
+    Dot,
+    Comma,
+    Colon,
     Semicolon,
+    ThinArrow,
+
+    Plus,
+    Minus,
+    DblEqual,
 }
 
 impl Display for TokenKind {
@@ -118,8 +128,12 @@ impl<'a> Iterator for LexerIter<'a> {
             '}' => as_token(&mut self.src, TokenKind::LBrace),
             '[' => as_token(&mut self.src, TokenKind::RBracket),
             ']' => as_token(&mut self.src, TokenKind::LBracket),
-            '=' => as_token(&mut self.src, TokenKind::Equal),
+            '.' => as_token(&mut self.src, TokenKind::Dot),
+            ',' => as_token(&mut self.src, TokenKind::Comma),
+            ':' => as_token(&mut self.src, TokenKind::Colon),
             ';' => as_token(&mut self.src, TokenKind::Semicolon),
+            '+' => as_token(&mut self.src, TokenKind::Plus),
+            '-' | '=' => Some(Ok(as_multi_char_token(&mut self.src))),
             '"' => Some(Ok(string(&mut self.src))),
             '0'..='9' => Some(Ok(number(&mut self.src))),
             c @ '_' | c if c.is_alphabetic() => Some(Ok(ident(&mut self.src))),
@@ -135,9 +149,22 @@ fn as_token(src: &mut Peekable<CharIndices>, kind: TokenKind) -> Option<Result<T
 }
 
 #[inline]
+fn as_multi_char_token(src: &mut Peekable<CharIndices>) -> Token {
+    let (start, ch1) = src.next().unwrap();
+
+    match (ch1, src.next_if(|(_, ch)| !ch.is_whitespace())) {
+        ('-', Some((end, '>'))) => Token::new(TokenKind::ThinArrow, start..end + 1),
+        ('-', None) => Token::new(TokenKind::Minus, start..start + 1),
+        ('=', Some((end, '='))) => Token::new(TokenKind::DblEqual, start..end + 1),
+        ('=', None) => Token::new(TokenKind::Equal, start..start + 1),
+        _ => unreachable!("How?!"),
+    }
+}
+
+#[inline]
 fn ident(src: &mut Peekable<CharIndices>) -> Token {
     let (start, ch) = src.next().unwrap();
-    let mut end = 0;
+    let mut end = start + 1;
 
     let mut id = String::new();
     id.push(ch);
@@ -153,6 +180,7 @@ fn ident(src: &mut Peekable<CharIndices>) -> Token {
         "let" => Token::new(TokenKind::Let, range),
         "fn" => Token::new(TokenKind::Fn, range),
         "type" => Token::new(TokenKind::Type, range),
+        "struct" => Token::new(TokenKind::Struct, range),
         _ => Token::new(id.into(), range),
     }
 }
@@ -160,7 +188,7 @@ fn ident(src: &mut Peekable<CharIndices>) -> Token {
 #[inline]
 fn string(src: &mut Peekable<CharIndices>) -> Token {
     let (start, _) = src.next().unwrap();
-    let mut end = 0;
+    let mut end = start + 1;
 
     let mut s = String::new();
 
@@ -178,17 +206,32 @@ fn string(src: &mut Peekable<CharIndices>) -> Token {
 #[inline]
 fn number(src: &mut Peekable<CharIndices>) -> Token {
     let (start, ch) = src.next().unwrap();
-    let mut end = 0;
+    let mut end = start + 1;
 
     let mut s = String::new();
     s.push(ch);
 
-    while let Some((idx, ch)) = src.next_if(|(_, ch)| ch.is_digit(10)) {
-        s.push(ch);
+    let mut is_float = false;
+    while let Some((idx, ch)) = src.next_if(|(_, ch)| *ch == '.' || ch.is_digit(10)) {
         end = idx + 1;
+        s.push(ch);
+        if is_float {
+            if let Some((_, ch)) = src.peek() {
+                if *ch == '.' {
+                    break;
+                }
+            }
+        }
+        if ch == '.' {
+            is_float = true;
+        }
     }
 
-    Token::new(TokenKind::Integer(s), start..end)
+    if is_float {
+        Token::new(TokenKind::Float(s), start..end)
+    } else {
+        Token::new(TokenKind::Integer(s), start..end)
+    }
 }
 
 #[cfg(test)]
@@ -210,11 +253,11 @@ mod tests {
                 use super::Lexer;
                 let tokens = Lexer::new($src).lex();
 
-                assert!(tokens.is_ok());
+                assert!(tokens.is_ok(), "Should not be error {tokens:?} {}", $src);
 
                 let token = tokens.unwrap().first().unwrap().kind.clone();
 
-                assert_eq!(token, $should_be, "Input was {:?}", $src);
+                assert_eq!(token, $should_be, "Input was {}", $src);
             }
         };
     }
@@ -230,16 +273,29 @@ mod tests {
     lexer_test!(rbracket_punctuation, "[" => TokenKind::RBracket);
     lexer_test!(lbracket_punctuation, "]" => TokenKind::LBracket);
     lexer_test!(equal_punctuation, "=" => TokenKind::Equal);
+    lexer_test!(dbl_equal_punctuation, "==" => TokenKind::DblEqual);
+    lexer_test!(dot_punctuation, "." => TokenKind::Dot);
+    lexer_test!(coma_punctuation, "," => TokenKind::Comma);
+    lexer_test!(colon_punctuation, ":" => TokenKind::Colon);
     lexer_test!(semicolon_punctuation, ";" => TokenKind::Semicolon);
+    lexer_test!(thin_arrow_punctuation, "->" => TokenKind::ThinArrow);
+
+    lexer_test!(plus_operator, "+" => TokenKind::Plus);
+    lexer_test!(minus_operator, "-" => TokenKind::Minus);
 
     lexer_test!(let_keyword, "let" => TokenKind::Let);
     lexer_test!(fn_keyword, "fn" => TokenKind::Fn);
     lexer_test!(type_keyword, "type" => TokenKind::Type);
+    lexer_test!(struct_keyword, "struct" => TokenKind::Struct);
 
     lexer_test!(identifiers, "abc" => TokenKind::Ident("abc".to_string()));
+    lexer_test!(identifiers_single_char, "a" => TokenKind::Ident("a".to_string()));
+    lexer_test!(identifiers_single_char_surrounded, " a  " => TokenKind::Ident("a".to_string()));
     lexer_test!(string, "\"abc\"" => TokenKind::String("abc".to_string()));
     lexer_test!(string_with_leading_number, "\"123abc\"" => TokenKind::String("123abc".to_string()));
     lexer_test!(string_with_special_chars, "\"123\nabc\"" => TokenKind::String("123\nabc".to_string()));
     lexer_test!(integer, "7" => TokenKind::Integer("7".to_string()));
     lexer_test!(integer_multiple_digits, "42069" => TokenKind::Integer("42069".to_string()));
+    lexer_test!(float, "420.69" => TokenKind::Float("420.69".to_string()));
+    lexer_test!(float_stops_after_second_dot, "192.168.0" => TokenKind::Float("192.168".to_string()));
 }
