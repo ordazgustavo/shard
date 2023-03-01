@@ -1,7 +1,8 @@
-use std::{borrow::Borrow, fmt::Display, iter::Peekable, ops::Range, str::CharIndices};
+use std::{borrow::Borrow, fmt::Display, iter::Peekable, ops::RangeInclusive, str::CharIndices};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
+    Unknown,
     Eof,
 
     Ident(String),
@@ -29,7 +30,7 @@ pub enum TokenKind {
 
     Plus,
     Minus,
-    DblEqual,
+    EqualTo,
 }
 
 impl Display for TokenKind {
@@ -53,19 +54,13 @@ impl<'a> From<&'a str> for TokenKind {
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub span: Range<usize>,
+    pub span: RangeInclusive<usize>,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, span: Range<usize>) -> Self {
+    pub fn new(kind: TokenKind, span: RangeInclusive<usize>) -> Self {
         Self { kind, span }
     }
-}
-
-#[derive(Debug)]
-pub enum LexError {
-    Empty,
-    UnknownToken(usize),
 }
 
 pub struct Lexer<'a> {
@@ -77,28 +72,12 @@ impl<'a> Lexer<'a> {
         Self { src }
     }
 
-    pub fn lex(&mut self) -> Result<Vec<Token>, LexError> {
-        if self.src.is_empty() {
-            return Err(LexError::Empty);
-        }
-
-        let lexer_iter = LexerIter::new(self.src);
-
-        let mut tokens = Vec::new();
-        for token in lexer_iter {
-            tokens.push(token?);
-        }
-        let eof = match tokens.last() {
-            Some(t) => Token::new(TokenKind::Eof, t.span.end..t.span.end),
-            None => Token::new(TokenKind::Eof, 0..0),
-        };
-        tokens.push(eof);
-
-        Ok(tokens)
+    pub fn iter(&self) -> LexerIter<'a> {
+        LexerIter::new(self.src)
     }
 }
 
-struct LexerIter<'a> {
+pub struct LexerIter<'a> {
     src: Peekable<CharIndices<'a>>,
 }
 
@@ -108,161 +87,167 @@ impl<'a> LexerIter<'a> {
             src: src.char_indices().peekable(),
         }
     }
+
+    fn handle_literal(&mut self, kind: TokenKind, idx: usize) -> Option<Token> {
+        Some(Token::new(kind, idx..=idx))
+    }
+
+    fn handle_dash(&mut self, start: usize) -> Option<Token> {
+        if let Some((end, _)) = self.src.next_if(|(_, ch)| *ch == '>') {
+            Some(Token::new(TokenKind::ThinArrow, start..=end))
+        } else {
+            Some(Token::new(TokenKind::Minus, start..=start))
+        }
+    }
+
+    fn handle_equal(&mut self, start: usize) -> Option<Token> {
+        if let Some((end, _)) = self.src.next_if(|(_, ch)| *ch == '=') {
+            Some(Token::new(TokenKind::EqualTo, start..=end))
+        } else {
+            Some(Token::new(TokenKind::Equal, start..=start))
+        }
+    }
+
+    fn handle_string(&mut self, start: usize) -> Option<Token> {
+        let mut end = start;
+
+        let mut s = String::new();
+
+        while let Some((idx, ch)) = self.src.next() {
+            end = idx;
+            if ch == '"' {
+                break;
+            }
+            s.push(ch);
+        }
+
+        Some(Token::new(TokenKind::String(s), start..=end))
+    }
+
+    fn handle_number(&mut self, ch: char, start: usize) -> Option<Token> {
+        let mut end = start;
+
+        let mut s = String::new();
+        s.push(ch);
+
+        let mut is_float = false;
+        while let Some((idx, ch)) = self.src.next_if(|(_, ch)| *ch == '.' || ch.is_digit(10)) {
+            end = idx;
+            s.push(ch);
+            if is_float {
+                if let Some((_, ch)) = self.src.peek() {
+                    if *ch == '.' {
+                        break;
+                    }
+                }
+            }
+            if ch == '.' {
+                is_float = true;
+            }
+        }
+
+        if is_float {
+            Some(Token::new(TokenKind::Float(s), start..=end))
+        } else {
+            Some(Token::new(TokenKind::Integer(s), start..=end))
+        }
+    }
+
+    fn handle_ident(&mut self, ch: char, start: usize) -> Option<Token> {
+        let mut end = start;
+
+        let mut id = String::new();
+        id.push(ch);
+
+        while let Some((idx, ch)) = self
+            .src
+            .next_if(|(_, ch)| *ch == '_' || ch.is_alphanumeric())
+        {
+            id.push(ch);
+            end = idx;
+        }
+
+        let range = start..=end;
+
+        match id.borrow() {
+            "let" => Some(Token::new(TokenKind::Let, range)),
+            "fn" => Some(Token::new(TokenKind::Fn, range)),
+            "type" => Some(Token::new(TokenKind::Type, range)),
+            "struct" => Some(Token::new(TokenKind::Struct, range)),
+            _ => Some(Token::new(id.into(), range)),
+        }
+    }
 }
 
 impl<'a> Iterator for LexerIter<'a> {
-    type Item = Result<Token, LexError>;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Some((idx, ch)) = self.src.peek() else { return None };
+        let Some((idx, ch)) = self.src.next() else { return None };
 
         match ch {
+            '(' => self.handle_literal(TokenKind::RParen, idx),
+            ')' => self.handle_literal(TokenKind::LParen, idx),
+            '{' => self.handle_literal(TokenKind::RBrace, idx),
+            '}' => self.handle_literal(TokenKind::LBrace, idx),
+            '[' => self.handle_literal(TokenKind::RBracket, idx),
+            ']' => self.handle_literal(TokenKind::LBracket, idx),
+            '.' => self.handle_literal(TokenKind::Dot, idx),
+            ',' => self.handle_literal(TokenKind::Comma, idx),
+            ':' => self.handle_literal(TokenKind::Colon, idx),
+            ';' => self.handle_literal(TokenKind::Semicolon, idx),
+            '+' => self.handle_literal(TokenKind::Plus, idx),
+            '-' => self.handle_dash(idx),
+            '=' => self.handle_equal(idx),
+            '"' => self.handle_string(idx),
+            '0'..='9' => self.handle_number(ch, idx),
+            c @ '_' | c if c.is_alphabetic() => self.handle_ident(ch, idx),
             c if c.is_whitespace() => {
-                // TODO: Is there a better way to consume the iterator conditionally?
                 while self.src.next_if(|(_, ch)| ch.is_whitespace()).is_some() {}
                 self.next()
             }
-            '(' => as_token(&mut self.src, TokenKind::RParen),
-            ')' => as_token(&mut self.src, TokenKind::LParen),
-            '{' => as_token(&mut self.src, TokenKind::RBrace),
-            '}' => as_token(&mut self.src, TokenKind::LBrace),
-            '[' => as_token(&mut self.src, TokenKind::RBracket),
-            ']' => as_token(&mut self.src, TokenKind::LBracket),
-            '.' => as_token(&mut self.src, TokenKind::Dot),
-            ',' => as_token(&mut self.src, TokenKind::Comma),
-            ':' => as_token(&mut self.src, TokenKind::Colon),
-            ';' => as_token(&mut self.src, TokenKind::Semicolon),
-            '+' => as_token(&mut self.src, TokenKind::Plus),
-            '-' | '=' => Some(Ok(as_multi_char_token(&mut self.src))),
-            '"' => Some(Ok(string(&mut self.src))),
-            '0'..='9' => Some(Ok(number(&mut self.src))),
-            c @ '_' | c if c.is_alphabetic() => Some(Ok(ident(&mut self.src))),
-            _ => Some(Err(LexError::UnknownToken(*idx))),
+            _ => Some(Token::new(TokenKind::Unknown, idx..=idx)),
         }
-    }
-}
-
-#[inline]
-fn as_token(src: &mut Peekable<CharIndices>, kind: TokenKind) -> Option<Result<Token, LexError>> {
-    src.next()
-        .map(|(idx, _)| Ok(Token::new(kind, idx..idx + 1)))
-}
-
-#[inline]
-fn as_multi_char_token(src: &mut Peekable<CharIndices>) -> Token {
-    let (start, ch1) = src.next().unwrap();
-
-    match (ch1, src.next_if(|(_, ch)| !ch.is_whitespace())) {
-        ('-', Some((end, '>'))) => Token::new(TokenKind::ThinArrow, start..end + 1),
-        ('-', None) => Token::new(TokenKind::Minus, start..start + 1),
-        ('=', Some((end, '='))) => Token::new(TokenKind::DblEqual, start..end + 1),
-        ('=', None) => Token::new(TokenKind::Equal, start..start + 1),
-        _ => unreachable!("How?!"),
-    }
-}
-
-#[inline]
-fn ident(src: &mut Peekable<CharIndices>) -> Token {
-    let (start, ch) = src.next().unwrap();
-    let mut end = start + 1;
-
-    let mut id = String::new();
-    id.push(ch);
-
-    while let Some((idx, ch)) = src.next_if(|(_, ch)| *ch == '_' || ch.is_alphanumeric()) {
-        id.push(ch);
-        end = idx + 1;
-    }
-
-    let range = start..end;
-
-    match id.borrow() {
-        "let" => Token::new(TokenKind::Let, range),
-        "fn" => Token::new(TokenKind::Fn, range),
-        "type" => Token::new(TokenKind::Type, range),
-        "struct" => Token::new(TokenKind::Struct, range),
-        _ => Token::new(id.into(), range),
-    }
-}
-
-#[inline]
-fn string(src: &mut Peekable<CharIndices>) -> Token {
-    let (start, _) = src.next().unwrap();
-    let mut end = start + 1;
-
-    let mut s = String::new();
-
-    for (idx, ch) in src {
-        end = idx + 1;
-        if ch == '"' {
-            break;
-        }
-        s.push(ch);
-    }
-
-    Token::new(TokenKind::String(s), start..end)
-}
-
-#[inline]
-fn number(src: &mut Peekable<CharIndices>) -> Token {
-    let (start, ch) = src.next().unwrap();
-    let mut end = start + 1;
-
-    let mut s = String::new();
-    s.push(ch);
-
-    let mut is_float = false;
-    while let Some((idx, ch)) = src.next_if(|(_, ch)| *ch == '.' || ch.is_digit(10)) {
-        end = idx + 1;
-        s.push(ch);
-        if is_float {
-            if let Some((_, ch)) = src.peek() {
-                if *ch == '.' {
-                    break;
-                }
-            }
-        }
-        if ch == '.' {
-            is_float = true;
-        }
-    }
-
-    if is_float {
-        Token::new(TokenKind::Float(s), start..end)
-    } else {
-        Token::new(TokenKind::Integer(s), start..end)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::TokenKind;
+    use super::{Lexer, TokenKind};
     macro_rules! lexer_test {
         (FAIL: $name:ident, $src:expr) => {
             #[test]
             fn $name() {
-                use super::Lexer;
-                let tokens = Lexer::new($src).lex();
+                let token = Lexer::new($src)
+                    .iter()
+                    .find(|t| t.kind == TokenKind::Unknown)
+                    .unwrap();
 
-                assert!(tokens.is_err(), "{:?} should be an error", tokens);
+                assert_eq!(
+                    token.kind,
+                    TokenKind::Unknown,
+                    "{:?} should be unknown",
+                    token
+                );
             }
         };
         ($name:ident, $src:expr => $should_be:expr) => {
             #[test]
             fn $name() {
-                use super::Lexer;
-                let tokens = Lexer::new($src).lex();
+                let token = Lexer::new($src).iter().next().unwrap();
 
-                assert!(tokens.is_ok(), "Should not be error {tokens:?} {}", $src);
-
-                let token = tokens.unwrap().first().unwrap().kind.clone();
-
-                assert_eq!(token, $should_be, "Input was {}", $src);
+                assert_eq!(token.kind, $should_be, "Input was {}", $src);
             }
         };
     }
 
-    lexer_test!(FAIL: handles_empty_input, "");
+    #[test]
+    fn handles_empty_input() {
+        let token = Lexer::new("").iter().next();
+
+        assert!(token.is_none(), "Input was {:?}", token);
+    }
+
     lexer_test!(FAIL: handles_extraneous_token, "@");
     lexer_test!(FAIL: handles_partially_consumend_input, "let abc @");
 
@@ -273,7 +258,7 @@ mod tests {
     lexer_test!(rbracket_punctuation, "[" => TokenKind::RBracket);
     lexer_test!(lbracket_punctuation, "]" => TokenKind::LBracket);
     lexer_test!(equal_punctuation, "=" => TokenKind::Equal);
-    lexer_test!(dbl_equal_punctuation, "==" => TokenKind::DblEqual);
+    lexer_test!(dbl_equal_punctuation, "==" => TokenKind::EqualTo);
     lexer_test!(dot_punctuation, "." => TokenKind::Dot);
     lexer_test!(coma_punctuation, "," => TokenKind::Comma);
     lexer_test!(colon_punctuation, ":" => TokenKind::Colon);
@@ -292,6 +277,7 @@ mod tests {
     lexer_test!(identifiers_single_char, "a" => TokenKind::Ident("a".to_string()));
     lexer_test!(identifiers_single_char_surrounded, " a  " => TokenKind::Ident("a".to_string()));
     lexer_test!(string, "\"abc\"" => TokenKind::String("abc".to_string()));
+    lexer_test!(string_emoji, "\"🫡👨‍👩‍👧‍👦\"" => TokenKind::String("🫡👨‍👩‍👧‍👦".to_string()));
     lexer_test!(string_with_leading_number, "\"123abc\"" => TokenKind::String("123abc".to_string()));
     lexer_test!(string_with_special_chars, "\"123\nabc\"" => TokenKind::String("123\nabc".to_string()));
     lexer_test!(integer, "7" => TokenKind::Integer("7".to_string()));

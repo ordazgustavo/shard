@@ -1,43 +1,48 @@
-use std::{env, fs::File, io::Read};
+use lexer::{Lexer, Token, TokenKind};
 
-use lexer::{LexError, Lexer};
+const CONTENTS: &'static str = include_str!("../testfiles/main.sr");
 
-fn read_file(file_path: &str) -> Result<String, std::io::Error> {
-    let mut file = File::open(file_path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    Ok(contents)
+fn error_at_point(at: usize) {
+    let (first, second) = CONTENTS.split_at(at);
+
+    let mut start = first.lines();
+    let mut end = second.lines();
+
+    let row = std::cmp::max(start.clone().count(), 1);
+    let col = start.clone().last().unwrap_or("").chars().count() + 1;
+    let sep = '|';
+
+    println!("Syntax error: unexpected token");
+    if row > 1 {
+        println!(
+            "{row:>2} {sep} {prev}",
+            row = row - 1,
+            prev = start.next().unwrap()
+        );
+    }
+    println!(
+        "{row:>2} {sep} {start}{end}",
+        start = start.last().unwrap_or(""),
+        end = end.next().unwrap()
+    );
+    println!("{:>2} {sep} {:>col$}", "", "^");
+    if let Some(next) = end.next() {
+        println!("{row:>2} {sep} {next}", row = row + 1);
+    }
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let path = args.get(1).expect("Missing file path");
-    let input = &read_file(&path).unwrap();
+    let tokens = Lexer::new(CONTENTS).iter().collect::<Vec<Token>>();
 
-    // let input = "fn main() {\n\tlet name = \"Gustavo\";\n\tlet age = 420.69;\n}";
-    let tokens = Lexer::new(input).lex();
-
-    println!("Input:\n{input}\n");
+    println!("Input:\n{CONTENTS}\n");
     println!("Tokens:\n{tokens:?}\n");
     println!("Parsed elements");
-    match tokens {
-        Ok(ts) => {
-            for t in ts {
-                println!("{:<16} -> {}", t.kind, &input[t.span])
-            }
+
+    for token in tokens {
+        if token.kind == TokenKind::Unknown {
+            error_at_point(token.span.into_inner().0)
+        } else {
+            println!("{:<16} -> {}", token.kind, &CONTENTS[token.span])
         }
-        Err(e) => match e {
-            LexError::Empty => println!("Empty source provided"),
-            LexError::UnknownToken(at) => {
-                let lines = input[..at].lines();
-                let line_number = lines.clone().count();
-                let line = lines.last().unwrap();
-                let col = line.chars().count() + 1;
-                let rest = input[at..].lines().nth(0).unwrap();
-                println!("Syntax error: unexpected token");
-                println!("{:>2} | {line}{rest}", line_number);
-                println!("{:>2} | {:>col$}", "", "^");
-            }
-        },
-    };
+    }
 }

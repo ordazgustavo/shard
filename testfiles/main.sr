@@ -1,8 +1,9 @@
-fn add(a: Int, b: Int) -> Int {
-  a + b
+fn add(a: Int, b: Int) -> bool {
+  a > b
 }
 
 fn main() {
   let res = add(1, 3);
+  print("🫡");
   print(res);
 }

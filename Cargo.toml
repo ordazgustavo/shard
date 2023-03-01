@@ -3,10 +3,18 @@ name = "shard"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+debug = true
+
 [dependencies]
+criterion = "0.4.0"
 lexer = { path = "crates/lexer", package = "shard-lexer" }
 
 [workspace]
 members = [
   "crates/*"
 ]
+
+[[bench]]
+name = "lexer"
+harness = false
