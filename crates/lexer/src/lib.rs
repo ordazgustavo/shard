@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, fmt::Display, iter::Peekable, ops::RangeInclusive, str::CharIndices};
+use std::{borrow::Borrow, fmt::Display, iter::Peekable, str::CharIndices};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
@@ -52,14 +52,41 @@ impl<'a> From<&'a str> for TokenKind {
 }
 
 #[derive(Debug)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl From<usize> for Span {
+    fn from(value: usize) -> Self {
+        Span {
+            start: value,
+            end: value + 1,
+        }
+    }
+}
+
+impl From<(usize, usize)> for Span {
+    fn from(value: (usize, usize)) -> Self {
+        Span {
+            start: value.0,
+            end: value.1 + 1,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub span: RangeInclusive<usize>,
+    pub span: Span,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, span: RangeInclusive<usize>) -> Self {
-        Self { kind, span }
+    pub fn new(kind: TokenKind, span: impl Into<Span>) -> Self {
+        Self {
+            kind,
+            span: span.into(),
+        }
     }
 }
 
@@ -79,32 +106,34 @@ impl<'a> Lexer<'a> {
 
 pub struct LexerIter<'a> {
     src: Peekable<CharIndices<'a>>,
+    exhausted: bool,
 }
 
 impl<'a> LexerIter<'a> {
     fn new(src: &'a str) -> Self {
         Self {
             src: src.char_indices().peekable(),
+            exhausted: false,
         }
     }
 
     fn handle_literal(&mut self, kind: TokenKind, idx: usize) -> Option<Token> {
-        Some(Token::new(kind, idx..=idx))
+        Some(Token::new(kind, idx))
     }
 
     fn handle_dash(&mut self, start: usize) -> Option<Token> {
         if let Some((end, _)) = self.src.next_if(|(_, ch)| *ch == '>') {
-            Some(Token::new(TokenKind::ThinArrow, start..=end))
+            Some(Token::new(TokenKind::ThinArrow, (start, end)))
         } else {
-            Some(Token::new(TokenKind::Minus, start..=start))
+            Some(Token::new(TokenKind::Minus, start))
         }
     }
 
     fn handle_equal(&mut self, start: usize) -> Option<Token> {
         if let Some((end, _)) = self.src.next_if(|(_, ch)| *ch == '=') {
-            Some(Token::new(TokenKind::EqualTo, start..=end))
+            Some(Token::new(TokenKind::EqualTo, (start, end)))
         } else {
-            Some(Token::new(TokenKind::Equal, start..=start))
+            Some(Token::new(TokenKind::Equal, start))
         }
     }
 
@@ -121,7 +150,7 @@ impl<'a> LexerIter<'a> {
             s.push(ch);
         }
 
-        Some(Token::new(TokenKind::String(s), start..=end))
+        Some(Token::new(TokenKind::String(s), (start, end)))
     }
 
     fn handle_number(&mut self, ch: char, start: usize) -> Option<Token> {
@@ -147,9 +176,9 @@ impl<'a> LexerIter<'a> {
         }
 
         if is_float {
-            Some(Token::new(TokenKind::Float(s), start..=end))
+            Some(Token::new(TokenKind::Float(s), (start, end)))
         } else {
-            Some(Token::new(TokenKind::Integer(s), start..=end))
+            Some(Token::new(TokenKind::Integer(s), (start, end)))
         }
     }
 
@@ -167,7 +196,7 @@ impl<'a> LexerIter<'a> {
             end = idx;
         }
 
-        let range = start..=end;
+        let range = (start, end);
 
         match id.borrow() {
             "let" => Some(Token::new(TokenKind::Let, range)),
@@ -177,14 +206,8 @@ impl<'a> LexerIter<'a> {
             _ => Some(Token::new(id.into(), range)),
         }
     }
-}
 
-impl<'a> Iterator for LexerIter<'a> {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let Some((idx, ch)) = self.src.next() else { return None };
-
+    fn handle_next_char(&mut self, ch: char, idx: usize) -> Option<Token> {
         match ch {
             '(' => self.handle_literal(TokenKind::RParen, idx),
             ')' => self.handle_literal(TokenKind::LParen, idx),
@@ -206,7 +229,24 @@ impl<'a> Iterator for LexerIter<'a> {
                 while self.src.next_if(|(_, ch)| ch.is_whitespace()).is_some() {}
                 self.next()
             }
-            _ => Some(Token::new(TokenKind::Unknown, idx..=idx)),
+            _ => Some(Token::new(TokenKind::Unknown, idx)),
+        }
+    }
+}
+
+impl<'a> Iterator for LexerIter<'a> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.src.next() {
+            Some((idx, ch)) => self.handle_next_char(ch, idx),
+            None => match self.exhausted {
+                true => None,
+                false => {
+                    self.exhausted = true;
+                    Some(Token::new(TokenKind::Eof, 0))
+                }
+            },
         }
     }
 }
@@ -241,16 +281,11 @@ mod tests {
         };
     }
 
-    #[test]
-    fn handles_empty_input() {
-        let token = Lexer::new("").iter().next();
-
-        assert!(token.is_none(), "Input was {:?}", token);
-    }
-
     lexer_test!(FAIL: handles_extraneous_token, "@");
     lexer_test!(FAIL: handles_partially_consumend_input, "let abc @");
 
+    lexer_test!(eof, "" => TokenKind::Eof);
+    lexer_test!(eof_spaces_only, " \n \t \n\n \n\r \r \t\t" => TokenKind::Eof);
     lexer_test!(rparen_punctuation, "(" => TokenKind::RParen);
     lexer_test!(lparen_punctuation, ")" => TokenKind::LParen);
     lexer_test!(rbrace_punctuation, "{" => TokenKind::RBrace);

@@ -39,10 +39,14 @@ fn main() {
     println!("Parsed elements");
 
     for token in tokens {
-        if token.kind == TokenKind::Unknown {
-            error_at_point(token.span.into_inner().0)
-        } else {
-            println!("{:<16} -> {}", token.kind, &CONTENTS[token.span])
+        match token.kind {
+            TokenKind::Unknown => error_at_point(token.span.start),
+            TokenKind::Eof => println!("{:<16} -> {}", token.kind, "<eof>"),
+            _ => println!(
+                "{:<16} -> {}",
+                token.kind,
+                &CONTENTS[token.span.start..token.span.end]
+            ),
         }
     }
 }
