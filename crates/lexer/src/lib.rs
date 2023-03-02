@@ -1,14 +1,14 @@
-use std::{borrow::Borrow, fmt::Display, iter::Peekable, ops::Range, str::CharIndices};
+use std::{fmt::Display, iter::Peekable, ops::Range, str::CharIndices};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Unknown,
     Eof,
 
-    Ident(String),
-    String(String),
-    Integer(String),
-    Float(String),
+    Ident,
+    String,
+    Integer,
+    Float,
 
     Let,
     Fn,
@@ -39,18 +39,6 @@ impl Display for TokenKind {
     }
 }
 
-impl From<String> for TokenKind {
-    fn from(other: String) -> TokenKind {
-        TokenKind::Ident(other)
-    }
-}
-
-impl<'a> From<&'a str> for TokenKind {
-    fn from(other: &'a str) -> TokenKind {
-        TokenKind::Ident(other.to_string())
-    }
-}
-
 #[derive(Debug)]
 pub struct Span {
     start: usize,
@@ -60,6 +48,10 @@ pub struct Span {
 impl Span {
     pub fn range(&self) -> Range<usize> {
         self.start..self.end + 1
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self { start: 0, end: 0 }
     }
 }
 
@@ -72,25 +64,18 @@ impl From<usize> for Span {
     }
 }
 
-impl From<(usize, usize)> for Span {
-    fn from(value: (usize, usize)) -> Self {
-        Span {
-            start: value.0,
-            end: value.1,
-        }
-    }
-}
-
 #[derive(Debug)]
-pub struct Token {
+pub struct Token<'a> {
     pub kind: TokenKind,
+    pub text: &'a str,
     pub span: Span,
 }
 
-impl Token {
-    pub fn new(kind: TokenKind, span: impl Into<Span>) -> Self {
+impl<'a> Token<'a> {
+    pub fn new(kind: TokenKind, text: &'a str, span: Span) -> Self {
         Self {
             kind,
+            text,
             span: span.into(),
         }
     }
@@ -125,27 +110,37 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_literal(&mut self, kind: TokenKind, idx: usize) -> Option<Token> {
-        Some(Token::new(kind, idx))
+    fn handle_literal(&mut self, kind: TokenKind, idx: usize) -> Option<Token<'a>> {
+        let span = Span::from(idx);
+        let slice = &self.src[span.range()];
+        Some(Token::new(kind, slice, span))
     }
 
-    fn handle_dash(&mut self, start: usize) -> Option<Token> {
+    fn handle_dash(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '>') {
-            Some(Token::new(TokenKind::ThinArrow, (start, end)))
+            let span = Span { start, end };
+            let slice = &self.src[span.range()];
+            Some(Token::new(TokenKind::ThinArrow, slice, span))
         } else {
-            Some(Token::new(TokenKind::Minus, start))
+            let span = Span::from(start);
+            let slice = &self.src[span.range()];
+            Some(Token::new(TokenKind::Minus, slice, span))
         }
     }
 
-    fn handle_equal(&mut self, start: usize) -> Option<Token> {
+    fn handle_equal(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
-            Some(Token::new(TokenKind::EqualTo, (start, end)))
+            let span = Span { start, end };
+            let slice = &self.src[span.range()];
+            Some(Token::new(TokenKind::EqualTo, slice, span))
         } else {
-            Some(Token::new(TokenKind::Equal, start))
+            let span = Span::from(start);
+            let slice = &self.src[span.range()];
+            Some(Token::new(TokenKind::Equal, slice, span))
         }
     }
 
-    fn handle_string(&mut self, start: usize) -> Option<Token> {
+    fn handle_string(&mut self, start: usize) -> Option<Token<'a>> {
         let mut end = start;
 
         while let Some((idx, ch)) = self.chars.next() {
@@ -158,21 +153,17 @@ impl<'a> LexerIter<'a> {
         let span = Span { start, end };
         let slice = &self.src[span.range()];
 
-        Some(Token::new(TokenKind::String(slice.to_string()), span))
+        Some(Token::new(TokenKind::String, slice, span))
     }
 
-    fn handle_number(&mut self, start: usize) -> Option<Token> {
+    fn handle_number(&mut self, start: usize) -> Option<Token<'a>> {
         let mut end = start;
 
         let mut is_float = false;
         while let Some((idx, ch)) = self.chars.next_if(|(_, ch)| *ch == '.' || ch.is_digit(10)) {
             end = idx;
-            if is_float {
-                if let Some((_, ch)) = self.chars.peek() {
-                    if *ch == '.' {
-                        break;
-                    }
-                }
+            if is_float && matches!(self.chars.peek(), Some((_, '.'))) {
+                break;
             }
             if ch == '.' {
                 is_float = true;
@@ -183,13 +174,13 @@ impl<'a> LexerIter<'a> {
         let slice = &self.src[span.range()];
 
         if is_float {
-            Some(Token::new(TokenKind::Float(slice.to_string()), span))
+            Some(Token::new(TokenKind::Float, slice, span))
         } else {
-            Some(Token::new(TokenKind::Integer(slice.to_string()), span))
+            Some(Token::new(TokenKind::Integer, slice, span))
         }
     }
 
-    fn handle_ident(&mut self, start: usize) -> Option<Token> {
+    fn handle_ident(&mut self, start: usize) -> Option<Token<'a>> {
         let mut end = start;
 
         while let Some((idx, _)) = self
@@ -202,16 +193,16 @@ impl<'a> LexerIter<'a> {
         let span = Span { start, end };
         let slice = &self.src[span.range()];
 
-        match slice.borrow() {
-            "let" => Some(Token::new(TokenKind::Let, span)),
-            "fn" => Some(Token::new(TokenKind::Fn, span)),
-            "type" => Some(Token::new(TokenKind::Type, span)),
-            "struct" => Some(Token::new(TokenKind::Struct, span)),
-            _ => Some(Token::new(slice.into(), span)),
+        match slice {
+            "let" => Some(Token::new(TokenKind::Let, slice, span)),
+            "fn" => Some(Token::new(TokenKind::Fn, slice, span)),
+            "type" => Some(Token::new(TokenKind::Type, slice, span)),
+            "struct" => Some(Token::new(TokenKind::Struct, slice, span)),
+            _ => Some(Token::new(TokenKind::Ident, slice, span)),
         }
     }
 
-    fn handle_next_char(&mut self, ch: char, idx: usize) -> Option<Token> {
+    fn handle_next_char(&mut self, ch: char, idx: usize) -> Option<Token<'a>> {
         match ch {
             '(' => self.handle_literal(TokenKind::RParen, idx),
             ')' => self.handle_literal(TokenKind::LParen, idx),
@@ -233,13 +224,18 @@ impl<'a> LexerIter<'a> {
                 while self.chars.next_if(|(_, ch)| ch.is_whitespace()).is_some() {}
                 self.next()
             }
-            _ => Some(Token::new(TokenKind::Unknown, idx)),
+            _ => {
+                let span = Span::from(idx);
+                let slice = &self.src[span.range()];
+
+                Some(Token::new(TokenKind::Unknown, slice, span))
+            }
         }
     }
 }
 
 impl<'a> Iterator for LexerIter<'a> {
-    type Item = Token;
+    type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.chars.next() {
@@ -248,7 +244,7 @@ impl<'a> Iterator for LexerIter<'a> {
                 true => None,
                 false => {
                     self.exhausted = true;
-                    Some(Token::new(TokenKind::Eof, 0))
+                    Some(Token::new(TokenKind::Eof, "", Span::empty()))
                 }
             },
         }
@@ -283,6 +279,15 @@ mod tests {
                 assert_eq!(token.kind, $should_be, "Input was {}", $src);
             }
         };
+        ($name:ident, $src:expr => $should_be:expr, $slice:expr) => {
+            #[test]
+            fn $name() {
+                let token = Lexer::new($src).iter().next().unwrap();
+
+                assert_eq!(token.kind, $should_be, "Input was {}", $src);
+                assert_eq!(token.text, $slice, "Input was {}", $src);
+            }
+        };
     }
 
     lexer_test!(FAIL: handles_extraneous_token, "@");
@@ -312,15 +317,15 @@ mod tests {
     lexer_test!(type_keyword, "type" => TokenKind::Type);
     lexer_test!(struct_keyword, "struct" => TokenKind::Struct);
 
-    lexer_test!(identifiers, "abc" => TokenKind::Ident("abc".to_string()));
-    lexer_test!(identifiers_single_char, "a" => TokenKind::Ident("a".to_string()));
-    lexer_test!(identifiers_single_char_surrounded, " a  " => TokenKind::Ident("a".to_string()));
-    lexer_test!(string, "\"abc\"" => TokenKind::String("\"abc\"".to_string()));
-    lexer_test!(string_emoji, "\"🫡👨‍👩‍👧‍👦\"" => TokenKind::String("\"🫡👨‍👩‍👧‍👦\"".to_string()));
-    lexer_test!(string_with_leading_number, "\"123abc\"" => TokenKind::String("\"123abc\"".to_string()));
-    lexer_test!(string_with_special_chars, "\"123\nabc\"" => TokenKind::String("\"123\nabc\"".to_string()));
-    lexer_test!(integer, "7" => TokenKind::Integer("7".to_string()));
-    lexer_test!(integer_multiple_digits, "42069" => TokenKind::Integer("42069".to_string()));
-    lexer_test!(float, "420.69" => TokenKind::Float("420.69".to_string()));
-    lexer_test!(float_stops_after_second_dot, "192.168.0" => TokenKind::Float("192.168".to_string()));
+    lexer_test!(identifiers, "abc" => TokenKind::Ident, "abc");
+    lexer_test!(identifiers_single_char, "a" => TokenKind::Ident, "a");
+    lexer_test!(identifiers_single_char_surrounded, " a  " => TokenKind::Ident, "a");
+    lexer_test!(string, "\"abc\"" => TokenKind::String, "\"abc\"");
+    lexer_test!(string_emoji, "\"🫡👨‍👩‍👧‍👦\"" => TokenKind::String, "\"🫡👨‍👩‍👧‍👦\"");
+    lexer_test!(string_with_leading_number, "\"123abc\"" => TokenKind::String, "\"123abc\"");
+    lexer_test!(string_with_special_chars, "\"123\nabc\"" => TokenKind::String, "\"123\nabc\"");
+    lexer_test!(integer, "7" => TokenKind::Integer, "7");
+    lexer_test!(integer_multiple_digits, "42069" => TokenKind::Integer, "42069");
+    lexer_test!(float, "420.69" => TokenKind::Float, "420.69");
+    lexer_test!(float_stops_after_second_dot, "192.168.0" => TokenKind::Float, "192.168");
 }
