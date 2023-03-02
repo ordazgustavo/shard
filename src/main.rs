@@ -40,13 +40,9 @@ fn main() {
 
     for token in tokens {
         match token.kind {
-            TokenKind::Unknown => error_at_point(token.span.start),
+            TokenKind::Unknown => error_at_point(token.span.range().start),
             TokenKind::Eof => println!("{:<16} -> {}", token.kind, "<eof>"),
-            _ => println!(
-                "{:<16} -> {}",
-                token.kind,
-                &CONTENTS[token.span.start..token.span.end]
-            ),
+            _ => println!("{:<16} -> {}", token.kind, &CONTENTS[token.span.range()]),
         }
     }
 }

@@ -3,7 +3,7 @@ name = "shard"
 version = "0.1.0"
 edition = "2021"
 
-[profile.release]
+[profile.bench]
 debug = true
 
 [dependencies]

@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, fmt::Display, iter::Peekable, str::CharIndices};
+use std::{borrow::Borrow, fmt::Display, iter::Peekable, ops::Range, str::CharIndices};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
@@ -53,15 +53,21 @@ impl<'a> From<&'a str> for TokenKind {
 
 #[derive(Debug)]
 pub struct Span {
-    pub start: usize,
-    pub end: usize,
+    start: usize,
+    end: usize,
+}
+
+impl Span {
+    pub fn range(&self) -> Range<usize> {
+        self.start..self.end + 1
+    }
 }
 
 impl From<usize> for Span {
     fn from(value: usize) -> Self {
         Span {
             start: value,
-            end: value + 1,
+            end: value,
         }
     }
 }
@@ -70,7 +76,7 @@ impl From<(usize, usize)> for Span {
     fn from(value: (usize, usize)) -> Self {
         Span {
             start: value.0,
-            end: value.1 + 1,
+            end: value.1,
         }
     }
 }
@@ -105,14 +111,16 @@ impl<'a> Lexer<'a> {
 }
 
 pub struct LexerIter<'a> {
-    src: Peekable<CharIndices<'a>>,
+    src: &'a str,
+    chars: Peekable<CharIndices<'a>>,
     exhausted: bool,
 }
 
 impl<'a> LexerIter<'a> {
     fn new(src: &'a str) -> Self {
         Self {
-            src: src.char_indices().peekable(),
+            src,
+            chars: src.char_indices().peekable(),
             exhausted: false,
         }
     }
@@ -122,7 +130,7 @@ impl<'a> LexerIter<'a> {
     }
 
     fn handle_dash(&mut self, start: usize) -> Option<Token> {
-        if let Some((end, _)) = self.src.next_if(|(_, ch)| *ch == '>') {
+        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '>') {
             Some(Token::new(TokenKind::ThinArrow, (start, end)))
         } else {
             Some(Token::new(TokenKind::Minus, start))
@@ -130,7 +138,7 @@ impl<'a> LexerIter<'a> {
     }
 
     fn handle_equal(&mut self, start: usize) -> Option<Token> {
-        if let Some((end, _)) = self.src.next_if(|(_, ch)| *ch == '=') {
+        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
             Some(Token::new(TokenKind::EqualTo, (start, end)))
         } else {
             Some(Token::new(TokenKind::Equal, start))
@@ -140,31 +148,27 @@ impl<'a> LexerIter<'a> {
     fn handle_string(&mut self, start: usize) -> Option<Token> {
         let mut end = start;
 
-        let mut s = String::new();
-
-        while let Some((idx, ch)) = self.src.next() {
+        while let Some((idx, ch)) = self.chars.next() {
             end = idx;
             if ch == '"' {
                 break;
             }
-            s.push(ch);
         }
 
-        Some(Token::new(TokenKind::String(s), (start, end)))
+        let span = Span { start, end };
+        let slice = &self.src[span.range()];
+
+        Some(Token::new(TokenKind::String(slice.to_string()), span))
     }
 
-    fn handle_number(&mut self, ch: char, start: usize) -> Option<Token> {
+    fn handle_number(&mut self, start: usize) -> Option<Token> {
         let mut end = start;
 
-        let mut s = String::new();
-        s.push(ch);
-
         let mut is_float = false;
-        while let Some((idx, ch)) = self.src.next_if(|(_, ch)| *ch == '.' || ch.is_digit(10)) {
+        while let Some((idx, ch)) = self.chars.next_if(|(_, ch)| *ch == '.' || ch.is_digit(10)) {
             end = idx;
-            s.push(ch);
             if is_float {
-                if let Some((_, ch)) = self.src.peek() {
+                if let Some((_, ch)) = self.chars.peek() {
                     if *ch == '.' {
                         break;
                     }
@@ -175,35 +179,35 @@ impl<'a> LexerIter<'a> {
             }
         }
 
+        let span = Span { start, end };
+        let slice = &self.src[span.range()];
+
         if is_float {
-            Some(Token::new(TokenKind::Float(s), (start, end)))
+            Some(Token::new(TokenKind::Float(slice.to_string()), span))
         } else {
-            Some(Token::new(TokenKind::Integer(s), (start, end)))
+            Some(Token::new(TokenKind::Integer(slice.to_string()), span))
         }
     }
 
-    fn handle_ident(&mut self, ch: char, start: usize) -> Option<Token> {
+    fn handle_ident(&mut self, start: usize) -> Option<Token> {
         let mut end = start;
 
-        let mut id = String::new();
-        id.push(ch);
-
-        while let Some((idx, ch)) = self
-            .src
+        while let Some((idx, _)) = self
+            .chars
             .next_if(|(_, ch)| *ch == '_' || ch.is_alphanumeric())
         {
-            id.push(ch);
             end = idx;
         }
 
-        let range = (start, end);
+        let span = Span { start, end };
+        let slice = &self.src[span.range()];
 
-        match id.borrow() {
-            "let" => Some(Token::new(TokenKind::Let, range)),
-            "fn" => Some(Token::new(TokenKind::Fn, range)),
-            "type" => Some(Token::new(TokenKind::Type, range)),
-            "struct" => Some(Token::new(TokenKind::Struct, range)),
-            _ => Some(Token::new(id.into(), range)),
+        match slice.borrow() {
+            "let" => Some(Token::new(TokenKind::Let, span)),
+            "fn" => Some(Token::new(TokenKind::Fn, span)),
+            "type" => Some(Token::new(TokenKind::Type, span)),
+            "struct" => Some(Token::new(TokenKind::Struct, span)),
+            _ => Some(Token::new(slice.into(), span)),
         }
     }
 
@@ -223,10 +227,10 @@ impl<'a> LexerIter<'a> {
             '-' => self.handle_dash(idx),
             '=' => self.handle_equal(idx),
             '"' => self.handle_string(idx),
-            '0'..='9' => self.handle_number(ch, idx),
-            c @ '_' | c if c.is_alphabetic() => self.handle_ident(ch, idx),
+            '0'..='9' => self.handle_number(idx),
+            c @ '_' | c if c.is_alphabetic() => self.handle_ident(idx),
             c if c.is_whitespace() => {
-                while self.src.next_if(|(_, ch)| ch.is_whitespace()).is_some() {}
+                while self.chars.next_if(|(_, ch)| ch.is_whitespace()).is_some() {}
                 self.next()
             }
             _ => Some(Token::new(TokenKind::Unknown, idx)),
@@ -238,7 +242,7 @@ impl<'a> Iterator for LexerIter<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.src.next() {
+        match self.chars.next() {
             Some((idx, ch)) => self.handle_next_char(ch, idx),
             None => match self.exhausted {
                 true => None,
@@ -311,10 +315,10 @@ mod tests {
     lexer_test!(identifiers, "abc" => TokenKind::Ident("abc".to_string()));
     lexer_test!(identifiers_single_char, "a" => TokenKind::Ident("a".to_string()));
     lexer_test!(identifiers_single_char_surrounded, " a  " => TokenKind::Ident("a".to_string()));
-    lexer_test!(string, "\"abc\"" => TokenKind::String("abc".to_string()));
-    lexer_test!(string_emoji, "\"🫡👨‍👩‍👧‍👦\"" => TokenKind::String("🫡👨‍👩‍👧‍👦".to_string()));
-    lexer_test!(string_with_leading_number, "\"123abc\"" => TokenKind::String("123abc".to_string()));
-    lexer_test!(string_with_special_chars, "\"123\nabc\"" => TokenKind::String("123\nabc".to_string()));
+    lexer_test!(string, "\"abc\"" => TokenKind::String("\"abc\"".to_string()));
+    lexer_test!(string_emoji, "\"🫡👨‍👩‍👧‍👦\"" => TokenKind::String("\"🫡👨‍👩‍👧‍👦\"".to_string()));
+    lexer_test!(string_with_leading_number, "\"123abc\"" => TokenKind::String("\"123abc\"".to_string()));
+    lexer_test!(string_with_special_chars, "\"123\nabc\"" => TokenKind::String("\"123\nabc\"".to_string()));
     lexer_test!(integer, "7" => TokenKind::Integer("7".to_string()));
     lexer_test!(integer_multiple_digits, "42069" => TokenKind::Integer("42069".to_string()));
     lexer_test!(float, "420.69" => TokenKind::Float("420.69".to_string()));
