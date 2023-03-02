@@ -1,6 +1,6 @@
 use lexer::{Lexer, Token, TokenKind};
 
-const CONTENTS: &'static str = include_str!("../testfiles/main.sr");
+const CONTENTS: &str = include_str!("../testfiles/main.sr");
 
 fn error_at_point(at: usize) {
     let (first, second) = CONTENTS.split_at(at);
@@ -41,7 +41,7 @@ fn main() {
     for token in tokens {
         match token.kind {
             TokenKind::Unknown => error_at_point(token.span.range().start),
-            TokenKind::Eof => println!("{:<16} -> {}", token.kind, "<eof>"),
+            TokenKind::Eof => println!("{:<16} -> <eof>", token.kind),
             _ => println!("{:<16} -> {}", token.kind, &CONTENTS[token.span.range()]),
         }
     }

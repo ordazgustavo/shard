@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-const CONTENTS: &'static str = include_str!("../testfiles/bench.sr");
+const CONTENTS: &str = include_str!("../testfiles/bench.sr");
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("Lexer", |b| {

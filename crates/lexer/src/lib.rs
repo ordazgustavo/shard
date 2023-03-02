@@ -73,11 +73,7 @@ pub struct Token<'a> {
 
 impl<'a> Token<'a> {
     pub fn new(kind: TokenKind, text: &'a str, span: Span) -> Self {
-        Self {
-            kind,
-            text,
-            span: span.into(),
-        }
+        Self { kind, text, span }
     }
 }
 
@@ -143,7 +139,7 @@ impl<'a> LexerIter<'a> {
     fn handle_string(&mut self, start: usize) -> Option<Token<'a>> {
         let mut end = start;
 
-        while let Some((idx, ch)) = self.chars.next() {
+        for (idx, ch) in self.chars.by_ref() {
             end = idx;
             if ch == '"' {
                 break;
@@ -160,7 +156,10 @@ impl<'a> LexerIter<'a> {
         let mut end = start;
 
         let mut is_float = false;
-        while let Some((idx, ch)) = self.chars.next_if(|(_, ch)| *ch == '.' || ch.is_digit(10)) {
+        while let Some((idx, ch)) = self
+            .chars
+            .next_if(|(_, ch)| *ch == '.' || ch.is_ascii_digit())
+        {
             end = idx;
             if is_float && matches!(self.chars.peek(), Some((_, '.'))) {
                 break;
