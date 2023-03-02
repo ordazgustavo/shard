@@ -8,8 +8,10 @@ license = "MIT OR Apache-2.0"
 debug = true
 
 [dependencies]
-criterion = "0.4.0"
 lexer = { path = "crates/lexer", package = "shard-lexer" }
+
+[dev-dependencies]
+criterion = "0.4.0"
 
 [workspace]
 members = [
