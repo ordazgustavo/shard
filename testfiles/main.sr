@@ -1,9 +1,57 @@
-fn add(a: Int, b: Int) -> bool {
-  a > b
-}
+let long_string = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
 
-fn main() {
-  let res = add(1, 3);
-  print("🫡");
-  print(res);
-}
+let float = 420.69;
+
+let a = 42069;
+let b = 42500;
+fn add(a: Int, b: Int) -> Int { a + b }
+print(add(a, b));
+
+fn sub(a: Int, b: Int) -> Int { a - b }
+print(sub(a, b));
+
+fn mul(a: Int, b: Int) -> Int { a * b }
+print(mul(a, b));
+
+fn div(a: Int, b: Int) -> Int { a / b }
+print(div(a, b));
+
+fn gt(a: Int, b: Int) -> bool { a > b }
+print(gt(a, b));
+
+fn gte(a: Int, b: Int) -> bool { a >= b }
+print(gt(a, b));
+
+fn lt(a: Int, b: Int) -> bool { a < b }
+print(lt(a, b));
+
+fn lte(a: Int, b: Int) -> bool { a <= b }
+print(lt(a, b));
+
+fn eq(a: Int, b: Int) -> bool { a == b }
+print(eq(a, b));
+
+fn neq(a: Int, b: Int) -> bool { a != b }
+print(neq(a, b));
+
+fn neg(a: bool) -> bool { !a }
+print(neg(a));
+
+fn and(lhs: bool, rhs: bool) -> bool { lhs && rhs }
+print(eq(true, true));
+print(eq(false, true));
+print(eq(true, false));
+print(eq(false, false));
+
+fn or(lhs: bool, rhs: bool) -> bool { lhs || rhs }
+print(or(true, true));
+print(or(false, true));
+print(or(true, false));
+print(or(false, false));
+
+struct User { name: String, age: UInt }
+fn can_drink(user: User) -> bool { user.age >= 18 }
+print(can_drink(User { name: "Shard", age: 0 }));
+
+type Uuid = String;
+fn gen_uuid() -> Uuid { "9cc20af5-283e-4ec8-8fee-ce6298305b96" }

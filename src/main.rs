@@ -1,6 +1,10 @@
+// #![allow(dead_code, unused_imports)]
+
+use std::time::Instant;
+
 use lexer::{Lexer, Token, TokenKind};
 
-const CONTENTS: &str = include_str!("../testfiles/main.sr");
+const CONTENTS: &str = include_str!("../testfiles/bench.sr");
 
 fn error_at_point(at: usize) {
     let (first, second) = CONTENTS.split_at(at);
@@ -31,18 +35,27 @@ fn error_at_point(at: usize) {
     }
 }
 
+macro_rules! log {
+    ($title:expr) => {
+        println!("\x1b[1m\x1b[32m{}\x1b[0m", $title)
+    };
+    ($title:expr, $desc:expr) => {
+        println!("\x1b[1m\x1b[32m{}\x1b[0m {}", $title, $desc)
+    };
+}
+
 fn main() {
+    log!("Lexing");
+    let start = Instant::now();
     let tokens = Lexer::new(CONTENTS).iter().collect::<Vec<Token>>();
+    let duration = start.elapsed().as_secs_f64();
+    log!("Lexed", format!("in: {duration}s"));
 
-    println!("Input:\n{CONTENTS}\n");
-    println!("Tokens:\n{tokens:?}\n");
-    println!("Parsed elements");
-
+    println!("Tokens:");
     for token in tokens {
         match token.kind {
             TokenKind::Unknown => error_at_point(token.span.range().start),
-            TokenKind::Eof => println!("{:<16} -> <eof>", token.kind),
-            _ => println!("{:<16} -> {}", token.kind, &CONTENTS[token.span.range()]),
+            _ => println!("{token:?}"),
         }
     }
 }
