@@ -1,10 +1,9 @@
-// #![allow(dead_code, unused_imports)]
+#![allow(dead_code, unused_imports)]
 
-use std::time::Instant;
+use lexer::{Lexer, TokenKind};
+use parser::{Parser, Program};
 
-use lexer::{Lexer, Token, TokenKind};
-
-const CONTENTS: &str = include_str!("../testfiles/bench.sr");
+const CONTENTS: &str = include_str!("../testfiles/parser.sr");
 
 fn error_at_point(at: usize) {
     let (first, second) = CONTENTS.split_at(at);
@@ -44,18 +43,28 @@ macro_rules! log {
     };
 }
 
-fn main() {
-    log!("Lexing");
-    let start = Instant::now();
-    let tokens = Lexer::new(CONTENTS).iter().collect::<Vec<Token>>();
-    let duration = start.elapsed().as_secs_f64();
-    log!("Lexed", format!("in: {duration}s"));
+// log!("Lexing");
+// let start = Instant::now();
+// let tokens = Lexer::new(CONTENTS);
+// let duration = start.elapsed().as_secs_f64();
+// log!("Lexed", format!("in: {duration}s"));
 
-    println!("Tokens:");
-    for token in tokens {
+fn main() {
+    let lexer = Lexer::new(CONTENTS);
+    let Program(stmts) = Parser::new(lexer.iter()).iter().collect();
+
+    println!();
+    log!("Lexed:");
+    for token in lexer {
         match token.kind {
             TokenKind::Unknown => error_at_point(token.span.range().start),
             _ => println!("{token:?}"),
         }
+    }
+
+    println!();
+    log!("Parsed:");
+    for stmt in stmts {
+        println!("{stmt:?}");
     }
 }

@@ -113,6 +113,7 @@ impl<'a> Token<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct Lexer<'a> {
     src: &'a str,
 }
@@ -127,6 +128,17 @@ impl<'a> Lexer<'a> {
     }
 }
 
+impl<'a> IntoIterator for Lexer<'a> {
+    type Item = Token<'a>;
+
+    type IntoIter = LexerIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+#[derive(Clone)]
 pub struct LexerIter<'a> {
     src: &'a str,
     chars: Peekable<CharIndices<'a>>,

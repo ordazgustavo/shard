@@ -454,11 +454,19 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "shard-lexer",
+ "shard-parser",
 ]
 
 [[package]]
 name = "shard-lexer"
 version = "0.1.0"
+
+[[package]]
+name = "shard-parser"
+version = "0.1.0"
+dependencies = [
+ "shard-lexer",
+]
 
 [[package]]
 name = "syn"

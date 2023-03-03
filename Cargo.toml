@@ -9,6 +9,7 @@ debug = true
 
 [dependencies]
 lexer = { path = "crates/lexer", package = "shard-lexer" }
+parser = { path = "crates/parser", package = "shard-parser" }
 
 [dev-dependencies]
 criterion = "0.4.0"
