@@ -123,6 +123,10 @@ impl<'a> Lexer<'a> {
         Self { src }
     }
 
+    pub const fn new_const(src: &'a str) -> Self {
+        Self { src }
+    }
+
     pub fn iter(&self) -> LexerIter<'a> {
         LexerIter::new(self.src)
     }
