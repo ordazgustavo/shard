@@ -3,10 +3,13 @@
 use lexer::{Lexer, TokenKind};
 use parser::{Parser, Program};
 
-const CONTENTS: &str = include_str!("../testfiles/parser.sr");
+const CONTENTS: &str = include_str!("../testfiles/main.sr");
 
+// TODO: figure out how to show EOF errors,
 fn error_at_point(at: usize) {
     let (first, second) = CONTENTS.split_at(at);
+
+    let has_newline = first.contains('\n');
 
     let mut start = first.lines();
     let mut end = second.lines();
@@ -22,12 +25,18 @@ fn error_at_point(at: usize) {
             row = row - 1,
             prev = start.next().unwrap()
         );
+    } else {
+        println!("{:>2} {sep}", "");
     }
-    println!(
-        "{row:>2} {sep} {start}{end}",
-        start = start.last().unwrap_or(""),
-        end = end.next().unwrap()
-    );
+    if has_newline {
+        println!("{row:>2} {sep} {start}", start = start.last().unwrap_or(""));
+    } else {
+        println!(
+            "{row:>2} {sep} {start}{end}",
+            start = start.last().unwrap_or(""),
+            end = end.next().unwrap()
+        );
+    }
     println!("{:>2} {sep} {:>col$}", "", "^");
     if let Some(next) = end.next() {
         println!("{row:>2} {sep} {next}", row = row + 1);
@@ -65,6 +74,15 @@ fn main() {
     println!();
     log!("Parsed:");
     for stmt in stmts {
-        println!("{stmt:?}");
+        match stmt {
+            parser::Stmt::Error(e) => match e {
+                parser::ParserError::MissingToken(_) => todo!(),
+                parser::ParserError::UnexpectedToken {
+                    unexpected,
+                    expected: _,
+                } => error_at_point(unexpected.span.range().start),
+            },
+            parser::Stmt::Let(_) => println!("{stmt:?}"),
+        }
     }
 }

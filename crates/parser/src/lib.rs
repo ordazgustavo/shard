@@ -1,4 +1,19 @@
-use lexer::{Token, TokenKind};
+use lexer::{Span, Token, TokenKind};
+
+#[derive(Debug)]
+pub struct TokenMeta {
+    pub kind: TokenKind,
+    pub span: Span,
+}
+
+impl<'a> From<Token<'a>> for TokenMeta {
+    fn from(value: Token<'a>) -> Self {
+        Self {
+            kind: value.kind,
+            span: value.span,
+        }
+    }
+}
 
 pub struct Program(pub Vec<Stmt>);
 
@@ -10,12 +25,38 @@ impl FromIterator<Stmt> for Program {
 
 #[derive(Debug)]
 pub enum Stmt {
-    Let(Expr, Expr),
+    Error(ParserError),
+
+    Let(LetStmt),
+}
+
+#[derive(Debug)]
+pub enum ParserError {
+    MissingToken(TokenKind),
+    UnexpectedToken {
+        unexpected: TokenMeta,
+        expected: TokenKind,
+    },
+}
+
+#[derive(Debug)]
+pub struct LetStmt {
+    l: TokenMeta,
+    ty: Option<TokenMeta>,
+    name: Ident,
+    equal: TokenMeta,
+    expr: Expr,
+    semi: TokenMeta,
+}
+
+#[derive(Debug)]
+pub struct Ident {
+    pub name: String,
 }
 
 #[derive(Debug)]
 pub enum Expr {
-    Ident(String),
+    Ident(Ident),
     String(String),
 }
 
@@ -34,6 +75,7 @@ where
     pub fn iter(self) -> ParserIter<'a, T> {
         ParserIter {
             tokens: self.tokens,
+            exhausted: false,
         }
     }
 }
@@ -43,24 +85,53 @@ where
     T: Iterator<Item = Token<'a>>,
 {
     tokens: T,
+    exhausted: bool,
 }
 
 impl<'a, T> ParserIter<'a, T>
 where
     T: Iterator<Item = Token<'a>>,
 {
-    fn handle_let(&mut self) -> Option<Stmt> {
-        let Some(Token {kind: TokenKind::Ident, text: ident, ..} ) = self.tokens.next() else { return None };
-        let Some(next) = self.tokens.next() else {return None};
-        if next.kind != TokenKind::Equal {
-            return None;
-        }
-        let Some(Token {kind: TokenKind::String, text: value, ..} ) = self.tokens.next() else { return None };
-        Some(Stmt::Let(
-            Expr::Ident(ident.to_string()),
-            Expr::String(value.to_string()),
-        ))
+    fn handle_let(&mut self, token: Token) -> Option<Stmt> {
+        let ident = match ensure_token(self.tokens.next(), TokenKind::Ident) {
+            Ok(t) => t,
+            Err(e) => return Some(Stmt::Error(e)),
+        };
+        let equal = match ensure_token(self.tokens.next(), TokenKind::Equal) {
+            Ok(t) => t,
+            Err(e) => return Some(Stmt::Error(e)),
+        };
+        let value = match ensure_token(self.tokens.next(), TokenKind::String) {
+            Ok(t) => t,
+            Err(e) => return Some(Stmt::Error(e)),
+        };
+        let semi = match ensure_token(self.tokens.next(), TokenKind::Semicolon) {
+            Ok(t) => t,
+            Err(e) => return Some(Stmt::Error(e)),
+        };
+
+        Some(Stmt::Let(LetStmt {
+            l: token.into(),
+            ty: None,
+            name: Ident {
+                name: ident.text.to_string(),
+            },
+            equal: equal.into(),
+            expr: Expr::String(value.text.to_string()),
+            semi: semi.into(),
+        }))
     }
+}
+
+fn ensure_token(token: Option<Token>, kind: TokenKind) -> Result<Token, ParserError> {
+    let Some(token) = token else { return Err(ParserError::MissingToken(kind)) };
+    if token.kind != kind {
+        return Err(ParserError::UnexpectedToken {
+            unexpected: token.into(),
+            expected: kind,
+        });
+    }
+    Ok(token)
 }
 
 impl<'a, T> Iterator for ParserIter<'a, T>
@@ -70,16 +141,19 @@ where
     type Item = Stmt;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Some(token) = self.tokens.next() else { return None };
+        if self.exhausted {
+            return None;
+        }
+        let token = self.tokens.next()?;
 
-        match token.kind {
+        let stmt = match token.kind {
             lexer::TokenKind::Unknown => todo!(),
-            lexer::TokenKind::Eof => None,
+            lexer::TokenKind::Eof => return None,
             lexer::TokenKind::Ident => todo!(),
             lexer::TokenKind::String => todo!(),
             lexer::TokenKind::Integer => todo!(),
             lexer::TokenKind::Float => todo!(),
-            lexer::TokenKind::Let => self.handle_let(),
+            lexer::TokenKind::Let => self.handle_let(token),
             lexer::TokenKind::Fn => todo!(),
             lexer::TokenKind::Type => todo!(),
             lexer::TokenKind::Struct => todo!(),
@@ -108,6 +182,11 @@ where
             lexer::TokenKind::GreaterThanOrEqual => todo!(),
             lexer::TokenKind::LesserThan => todo!(),
             lexer::TokenKind::LesserThanOrEqual => todo!(),
+        };
+
+        if matches!(stmt, Some(Stmt::Error(_))) {
+            self.exhausted = true;
         }
+        return stmt;
     }
 }
