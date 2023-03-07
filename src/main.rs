@@ -1,21 +1,23 @@
-#![allow(dead_code, unused_imports)]
+#![allow(dead_code, unused_imports, unused_macros)]
 
-use lexer::{Lexer, TokenKind};
+use lexer::{Lexer, Span, TokenKind};
 use parser::{Parser, Program};
 
 const CONTENTS: &str = include_str!("../testfiles/main.sr");
 
 // TODO: figure out how to show EOF errors,
-fn error_at_point(at: usize) {
+fn error_at_range(span: Span) {
+    let at = span.range().start;
     let (first, second) = CONTENTS.split_at(at);
 
-    let has_newline = first.contains('\n');
+    let has_newline = first.lines().last().unwrap().contains('\n');
 
     let mut start = first.lines();
     let mut end = second.lines();
 
     let row = std::cmp::max(start.clone().count(), 1);
-    let col = start.clone().last().unwrap_or("").chars().count() + 1;
+    let padding = span.range().count();
+    let col = start.clone().last().unwrap_or("").chars().count() + padding;
     let sep = '|';
 
     println!("Syntax error: unexpected token");
@@ -37,7 +39,7 @@ fn error_at_point(at: usize) {
             end = end.next().unwrap()
         );
     }
-    println!("{:>2} {sep} {:>col$}", "", "^");
+    println!("{:>2} {sep} {:>col$}", "", "^".repeat(padding));
     if let Some(next) = end.next() {
         println!("{row:>2} {sep} {next}", row = row + 1);
     }
@@ -60,29 +62,32 @@ macro_rules! log {
 
 fn main() {
     let lexer = Lexer::new(CONTENTS);
-    let Program(stmts) = Parser::new(lexer.iter()).iter().collect();
+    let parser = Parser::new(lexer.iter());
 
-    println!();
-    log!("Lexed:");
-    for token in lexer {
-        match token.kind {
-            TokenKind::Unknown => error_at_point(token.span.range().start),
-            _ => println!("{token:?}"),
-        }
-    }
+    // log!("Finished", parser.len());
 
+    // println!();
+    // log!("Lexed:");
+    // for token in lexer {
+    //     match token.kind {
+    //         TokenKind::Unknown => error_at_range(token.span),
+    //         _ => println!("{token:?}"),
+    //     }
+    // }
+    //
     println!();
     log!("Parsed:");
-    for stmt in stmts {
+    for stmt in parser {
         match stmt {
             parser::Stmt::Error(e) => match e {
                 parser::ParserError::MissingToken(_) => todo!(),
                 parser::ParserError::UnexpectedToken {
                     unexpected,
                     expected: _,
-                } => error_at_point(unexpected.span.range().start),
+                } => error_at_range(unexpected.span),
+                parser::ParserError::ExpectedExpr(found) => error_at_range(found.span),
             },
-            parser::Stmt::Let(_) => println!("{stmt:?}"),
+            _ => println!("{stmt:?}"),
         }
     }
 }

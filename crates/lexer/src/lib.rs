@@ -123,10 +123,6 @@ impl<'a> Lexer<'a> {
         Self { src }
     }
 
-    pub const fn new_const(src: &'a str) -> Self {
-        Self { src }
-    }
-
     pub fn iter(&self) -> LexerIter<'a> {
         LexerIter::new(self.src)
     }
@@ -317,12 +313,12 @@ impl<'a> LexerIter<'a> {
 
     fn handle_next_char(&mut self, ch: char, idx: usize) -> Option<Token<'a>> {
         match ch {
-            '(' => self.handle_literal(TokenKind::RParen, idx),
-            ')' => self.handle_literal(TokenKind::LParen, idx),
-            '{' => self.handle_literal(TokenKind::RBrace, idx),
-            '}' => self.handle_literal(TokenKind::LBrace, idx),
-            '[' => self.handle_literal(TokenKind::RBracket, idx),
-            ']' => self.handle_literal(TokenKind::LBracket, idx),
+            '(' => self.handle_literal(TokenKind::LParen, idx),
+            ')' => self.handle_literal(TokenKind::RParen, idx),
+            '{' => self.handle_literal(TokenKind::LBrace, idx),
+            '}' => self.handle_literal(TokenKind::RBrace, idx),
+            '[' => self.handle_literal(TokenKind::LBracket, idx),
+            ']' => self.handle_literal(TokenKind::RBracket, idx),
             ',' => self.handle_literal(TokenKind::Comma, idx),
             ':' => self.handle_literal(TokenKind::Colon, idx),
             ';' => self.handle_literal(TokenKind::Semicolon, idx),
@@ -413,12 +409,12 @@ mod tests {
 
     lexer_test!(comma_delimiter, "," => TokenKind::Comma);
     lexer_test!(colon_delimiter, ":" => TokenKind::Colon);
-    lexer_test!(rparen_delimiter, "(" => TokenKind::RParen);
-    lexer_test!(lparen_delimiter, ")" => TokenKind::LParen);
-    lexer_test!(rbrace_delimiter, "{" => TokenKind::RBrace);
-    lexer_test!(lbrace_delimiter, "}" => TokenKind::LBrace);
-    lexer_test!(rbracket_delimiter, "[" => TokenKind::RBracket);
-    lexer_test!(lbracket_delimiter, "]" => TokenKind::LBracket);
+    lexer_test!(rparen_delimiter, "(" => TokenKind::LParen);
+    lexer_test!(lparen_delimiter, ")" => TokenKind::RParen);
+    lexer_test!(rbrace_delimiter, "{" => TokenKind::LBrace);
+    lexer_test!(lbrace_delimiter, "}" => TokenKind::RBrace);
+    lexer_test!(rbracket_delimiter, "[" => TokenKind::LBracket);
+    lexer_test!(lbracket_delimiter, "]" => TokenKind::RBracket);
     lexer_test!(semicolon_delimiter, ";" => TokenKind::Semicolon);
     lexer_test!(thin_arrow_delimiter, "->" => TokenKind::ThinArrow);
 

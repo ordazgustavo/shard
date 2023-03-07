@@ -1,1 +1,8 @@
-let name = "Shard"
+fn add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+fn main() {
+  let name = "Shard";
+  let age = 69;
+}

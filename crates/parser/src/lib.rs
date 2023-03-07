@@ -1,3 +1,5 @@
+use std::iter::Peekable;
+
 use lexer::{Span, Token, TokenKind};
 
 #[derive(Debug)]
@@ -28,6 +30,7 @@ pub enum Stmt {
     Error(ParserError),
 
     Let(LetStmt),
+    Fn(FnStmt),
 }
 
 #[derive(Debug)]
@@ -37,16 +40,30 @@ pub enum ParserError {
         unexpected: TokenMeta,
         expected: TokenKind,
     },
+    ExpectedExpr(TokenMeta),
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct LetStmt {
-    l: TokenMeta,
+    let_key: TokenMeta,
     ty: Option<TokenMeta>,
     name: Ident,
     equal: TokenMeta,
     expr: Expr,
     semi: TokenMeta,
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct FnStmt {
+    fn_key: TokenMeta,
+    name: Ident,
+    lparen: TokenMeta,
+    rparen: TokenMeta,
+    lbrace: TokenMeta,
+    body: Vec<Stmt>,
+    rbrace: TokenMeta,
 }
 
 #[derive(Debug)]
@@ -58,6 +75,8 @@ pub struct Ident {
 pub enum Expr {
     Ident(Ident),
     String(String),
+    Integer(String),
+    Float(String),
 }
 
 pub struct Parser<T> {
@@ -74,9 +93,22 @@ where
 
     pub fn iter(self) -> ParserIter<'a, T> {
         ParserIter {
-            tokens: self.tokens,
+            tokens: self.tokens.peekable(),
             exhausted: false,
         }
+    }
+}
+
+impl<'a, T> IntoIterator for Parser<T>
+where
+    T: Iterator<Item = Token<'a>>,
+{
+    type Item = Stmt;
+
+    type IntoIter = ParserIter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -84,7 +116,7 @@ pub struct ParserIter<'a, T>
 where
     T: Iterator<Item = Token<'a>>,
 {
-    tokens: T,
+    tokens: Peekable<T>,
     exhausted: bool,
 }
 
@@ -92,46 +124,76 @@ impl<'a, T> ParserIter<'a, T>
 where
     T: Iterator<Item = Token<'a>>,
 {
-    fn handle_let(&mut self, token: Token) -> Option<Stmt> {
-        let ident = match ensure_token(self.tokens.next(), TokenKind::Ident) {
-            Ok(t) => t,
-            Err(e) => return Some(Stmt::Error(e)),
-        };
-        let equal = match ensure_token(self.tokens.next(), TokenKind::Equal) {
-            Ok(t) => t,
-            Err(e) => return Some(Stmt::Error(e)),
-        };
-        let value = match ensure_token(self.tokens.next(), TokenKind::String) {
-            Ok(t) => t,
-            Err(e) => return Some(Stmt::Error(e)),
-        };
-        let semi = match ensure_token(self.tokens.next(), TokenKind::Semicolon) {
-            Ok(t) => t,
-            Err(e) => return Some(Stmt::Error(e)),
-        };
+    fn ensure_token(&mut self, kind: TokenKind) -> Result<Token, ParserError> {
+        let Some(token) = self.tokens.next() else { return Err(ParserError::MissingToken(kind)) };
+        if token.kind != kind {
+            return Err(ParserError::UnexpectedToken {
+                unexpected: token.into(),
+                expected: kind,
+            });
+        }
+        Ok(token)
+    }
 
-        Some(Stmt::Let(LetStmt {
-            l: token.into(),
+    fn ensure_expr(&mut self) -> Result<Expr, ParserError> {
+        let Some(token) = self.tokens.next() else { todo!() };
+
+        match token.kind {
+            TokenKind::Ident => Ok(Expr::Ident(Ident {
+                name: token.text.to_string(),
+            })),
+            TokenKind::String => Ok(Expr::String(token.text.to_string())),
+            TokenKind::Integer => Ok(Expr::Integer(token.text.to_string())),
+            TokenKind::Float => Ok(Expr::Integer(token.text.to_string())),
+            _ => Err(ParserError::ExpectedExpr(token.into())),
+        }
+    }
+
+    fn ensure_ident(&mut self) -> Result<Ident, ParserError> {
+        let ident = self.ensure_token(TokenKind::Ident)?;
+
+        Ok(Ident {
+            name: ident.text.to_string(),
+        })
+    }
+
+    fn handle_let(&mut self, token: Token) -> Result<Stmt, ParserError> {
+        Ok(Stmt::Let(LetStmt {
+            let_key: token.into(),
             ty: None,
-            name: Ident {
-                name: ident.text.to_string(),
-            },
-            equal: equal.into(),
-            expr: Expr::String(value.text.to_string()),
-            semi: semi.into(),
+            name: self.ensure_ident()?,
+            equal: self.ensure_token(TokenKind::Equal)?.into(),
+            expr: self.ensure_expr()?,
+            semi: self.ensure_token(TokenKind::Semicolon)?.into(),
         }))
     }
-}
 
-fn ensure_token(token: Option<Token>, kind: TokenKind) -> Result<Token, ParserError> {
-    let Some(token) = token else { return Err(ParserError::MissingToken(kind)) };
-    if token.kind != kind {
-        return Err(ParserError::UnexpectedToken {
-            unexpected: token.into(),
-            expected: kind,
-        });
+    fn collect_body(&mut self) -> Vec<Stmt> {
+        let mut body = vec![];
+        while self
+            .tokens
+            .peek()
+            .map_or(false, |t| t.kind != TokenKind::RBrace)
+        {
+            match self.next() {
+                Some(stmt) => body.push(stmt),
+                None => break,
+            };
+        }
+        body
     }
-    Ok(token)
+
+    fn handle_fn(&mut self, token: Token) -> Result<Stmt, ParserError> {
+        Ok(Stmt::Fn(FnStmt {
+            fn_key: token.into(),
+            name: self.ensure_ident()?,
+            lparen: self.ensure_token(TokenKind::LParen)?.into(),
+            rparen: self.ensure_token(TokenKind::RParen)?.into(),
+            lbrace: self.ensure_token(TokenKind::LBrace)?.into(),
+            body: self.collect_body(),
+            rbrace: self.ensure_token(TokenKind::RBrace)?.into(),
+        }))
+    }
 }
 
 impl<'a, T> Iterator for ParserIter<'a, T>
@@ -154,18 +216,18 @@ where
             lexer::TokenKind::Integer => todo!(),
             lexer::TokenKind::Float => todo!(),
             lexer::TokenKind::Let => self.handle_let(token),
-            lexer::TokenKind::Fn => todo!(),
+            lexer::TokenKind::Fn => self.handle_fn(token),
             lexer::TokenKind::Type => todo!(),
             lexer::TokenKind::Struct => todo!(),
             lexer::TokenKind::Comma => todo!(),
             lexer::TokenKind::Colon => todo!(),
             lexer::TokenKind::Semicolon => todo!(),
-            lexer::TokenKind::RParen => todo!(),
             lexer::TokenKind::LParen => todo!(),
-            lexer::TokenKind::RBrace => todo!(),
+            lexer::TokenKind::RParen => todo!(),
             lexer::TokenKind::LBrace => todo!(),
-            lexer::TokenKind::RBracket => todo!(),
+            lexer::TokenKind::RBrace => todo!(),
             lexer::TokenKind::LBracket => todo!(),
+            lexer::TokenKind::RBracket => todo!(),
             lexer::TokenKind::ThinArrow => todo!(),
             lexer::TokenKind::Equal => todo!(),
             lexer::TokenKind::Plus => todo!(),
@@ -184,9 +246,12 @@ where
             lexer::TokenKind::LesserThanOrEqual => todo!(),
         };
 
-        if matches!(stmt, Some(Stmt::Error(_))) {
-            self.exhausted = true;
+        match stmt {
+            Ok(stmt) => Some(stmt),
+            Err(p_error) => {
+                self.exhausted = true;
+                Some(Stmt::Error(p_error))
+            }
         }
-        return stmt;
     }
 }
