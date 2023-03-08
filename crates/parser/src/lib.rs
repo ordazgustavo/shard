@@ -31,6 +31,7 @@ pub enum Stmt {
 
     Let(LetStmt),
     Fn(FnStmt),
+    Expr(Expr),
 }
 
 #[derive(Debug)]
@@ -38,7 +39,7 @@ pub enum ParserError {
     MissingToken(TokenKind),
     UnexpectedToken {
         unexpected: TokenMeta,
-        expected: TokenKind,
+        expected: Option<TokenKind>,
     },
     ExpectedExpr(TokenMeta),
 }
@@ -60,6 +61,7 @@ pub struct FnStmt {
     fn_key: TokenMeta,
     name: Ident,
     lparen: TokenMeta,
+    args: Vec<Ident>,
     rparen: TokenMeta,
     lbrace: TokenMeta,
     body: Vec<Stmt>,
@@ -77,6 +79,21 @@ pub enum Expr {
     String(String),
     Integer(String),
     Float(String),
+
+    Infix(InfixExpr),
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct InfixExpr {
+    left: Box<Expr>,
+    operator: Operator,
+    right: Box<Expr>,
+}
+
+#[derive(Debug)]
+pub enum Operator {
+    Plus,
 }
 
 pub struct Parser<T> {
@@ -124,29 +141,93 @@ impl<'a, T> ParserIter<'a, T>
 where
     T: Iterator<Item = Token<'a>>,
 {
-    fn ensure_token(&mut self, kind: TokenKind) -> Result<Token, ParserError> {
-        let Some(token) = self.tokens.next() else { return Err(ParserError::MissingToken(kind)) };
-        if token.kind != kind {
-            return Err(ParserError::UnexpectedToken {
-                unexpected: token.into(),
-                expected: kind,
-            });
-        }
-        Ok(token)
+    fn next_is(&mut self, kind: TokenKind) -> bool {
+        self.tokens.peek().map_or(false, |t| t.kind == kind)
     }
 
-    fn ensure_expr(&mut self) -> Result<Expr, ParserError> {
-        let Some(token) = self.tokens.next() else { todo!() };
-
+    fn token_to_expr(token: Token) -> Result<Expr, ParserError> {
         match token.kind {
             TokenKind::Ident => Ok(Expr::Ident(Ident {
                 name: token.text.to_string(),
             })),
             TokenKind::String => Ok(Expr::String(token.text.to_string())),
             TokenKind::Integer => Ok(Expr::Integer(token.text.to_string())),
-            TokenKind::Float => Ok(Expr::Integer(token.text.to_string())),
+            TokenKind::Float => Ok(Expr::Float(token.text.to_string())),
             _ => Err(ParserError::ExpectedExpr(token.into())),
         }
+    }
+
+    fn ensure_operator(&mut self) -> Result<Operator, ParserError> {
+        let Some(token) = self.tokens.next() else { todo!() };
+
+        let op = match token.kind {
+            TokenKind::Plus => Operator::Plus,
+            TokenKind::Minus => todo!(),
+            TokenKind::Mul => todo!(),
+            TokenKind::Div => todo!(),
+            TokenKind::Dot => todo!(),
+            TokenKind::EqualTo => todo!(),
+            TokenKind::Bang => todo!(),
+            TokenKind::NotEqualTo => todo!(),
+            TokenKind::Or => todo!(),
+            TokenKind::And => todo!(),
+            TokenKind::GreaterThan => todo!(),
+            TokenKind::GreaterThanOrEqual => todo!(),
+            TokenKind::LesserThan => todo!(),
+            TokenKind::LesserThanOrEqual => todo!(),
+            _ => {
+                return Err(ParserError::UnexpectedToken {
+                    unexpected: token.into(),
+                    expected: None,
+                })
+            }
+        };
+
+        Ok(op)
+    }
+
+    fn handle_expr_stmt(&mut self, token: Token) -> Result<Stmt, ParserError> {
+        let left = Self::token_to_expr(token)?;
+
+        if self.next_is(TokenKind::Plus) {
+            let operator = self.ensure_operator()?;
+            let right = self.ensure_expr()?;
+            return Ok(Stmt::Expr(Expr::Infix(InfixExpr {
+                left: Box::new(left),
+                operator,
+                right: Box::new(right),
+            })));
+        }
+
+        Ok(Stmt::Expr(left))
+    }
+
+    fn ensure_expr(&mut self) -> Result<Expr, ParserError> {
+        let Some(token) = self.tokens.next() else { todo!() };
+
+        let left = Self::token_to_expr(token)?;
+        if self.next_is(TokenKind::Plus) {
+            let operator = self.ensure_operator()?;
+            let right = self.ensure_expr()?;
+            return Ok(Expr::Infix(InfixExpr {
+                left: Box::new(left),
+                operator,
+                right: Box::new(right),
+            }));
+        }
+
+        Ok(left)
+    }
+
+    fn ensure_token(&mut self, kind: TokenKind) -> Result<Token, ParserError> {
+        let Some(token) = self.tokens.next() else { return Err(ParserError::MissingToken(kind)) };
+        if token.kind != kind {
+            return Err(ParserError::UnexpectedToken {
+                unexpected: token.into(),
+                expected: Some(kind),
+            });
+        }
+        Ok(token)
     }
 
     fn ensure_ident(&mut self) -> Result<Ident, ParserError> {
@@ -168,19 +249,29 @@ where
         }))
     }
 
-    fn collect_body(&mut self) -> Vec<Stmt> {
+    fn collect_body(&mut self) -> Result<Vec<Stmt>, ParserError> {
         let mut body = vec![];
-        while self
-            .tokens
-            .peek()
-            .map_or(false, |t| t.kind != TokenKind::RBrace)
-        {
+        while !self.next_is(TokenKind::RBrace) {
             match self.next() {
+                Some(Stmt::Error(error)) => return Err(error),
                 Some(stmt) => body.push(stmt),
                 None => break,
             };
         }
-        body
+        Ok(body)
+    }
+
+    fn collect_args(&mut self) -> Result<Vec<Ident>, ParserError> {
+        let mut idents = vec![];
+        while !self.next_is(TokenKind::RParen) {
+            let Ok(id) = self.ensure_ident() else { break };
+            idents.push(id);
+
+            if self.next_is(TokenKind::Comma) {
+                self.ensure_token(TokenKind::Comma)?;
+            }
+        }
+        Ok(idents)
     }
 
     fn handle_fn(&mut self, token: Token) -> Result<Stmt, ParserError> {
@@ -188,12 +279,20 @@ where
             fn_key: token.into(),
             name: self.ensure_ident()?,
             lparen: self.ensure_token(TokenKind::LParen)?.into(),
+            args: self.collect_args()?,
             rparen: self.ensure_token(TokenKind::RParen)?.into(),
             lbrace: self.ensure_token(TokenKind::LBrace)?.into(),
-            body: self.collect_body(),
+            body: self.collect_body()?,
             rbrace: self.ensure_token(TokenKind::RBrace)?.into(),
         }))
     }
+}
+
+fn todo_token(token: Token) -> Result<Stmt, ParserError> {
+    Err(ParserError::UnexpectedToken {
+        unexpected: token.into(),
+        expected: None,
+    })
 }
 
 impl<'a, T> Iterator for ParserIter<'a, T>
@@ -209,46 +308,47 @@ where
         let token = self.tokens.next()?;
 
         let stmt = match token.kind {
-            lexer::TokenKind::Unknown => todo!(),
+            lexer::TokenKind::Unknown => todo_token(token),
             lexer::TokenKind::Eof => return None,
-            lexer::TokenKind::Ident => todo!(),
-            lexer::TokenKind::String => todo!(),
-            lexer::TokenKind::Integer => todo!(),
-            lexer::TokenKind::Float => todo!(),
+            lexer::TokenKind::Ident => self.handle_expr_stmt(token),
+            lexer::TokenKind::String => self.handle_expr_stmt(token),
+            lexer::TokenKind::Integer => self.handle_expr_stmt(token),
+            lexer::TokenKind::Float => self.handle_expr_stmt(token),
             lexer::TokenKind::Let => self.handle_let(token),
             lexer::TokenKind::Fn => self.handle_fn(token),
-            lexer::TokenKind::Type => todo!(),
-            lexer::TokenKind::Struct => todo!(),
-            lexer::TokenKind::Comma => todo!(),
-            lexer::TokenKind::Colon => todo!(),
-            lexer::TokenKind::Semicolon => todo!(),
-            lexer::TokenKind::LParen => todo!(),
-            lexer::TokenKind::RParen => todo!(),
-            lexer::TokenKind::LBrace => todo!(),
-            lexer::TokenKind::RBrace => todo!(),
-            lexer::TokenKind::LBracket => todo!(),
-            lexer::TokenKind::RBracket => todo!(),
-            lexer::TokenKind::ThinArrow => todo!(),
-            lexer::TokenKind::Equal => todo!(),
-            lexer::TokenKind::Plus => todo!(),
-            lexer::TokenKind::Minus => todo!(),
-            lexer::TokenKind::Mul => todo!(),
-            lexer::TokenKind::Div => todo!(),
-            lexer::TokenKind::Dot => todo!(),
-            lexer::TokenKind::EqualTo => todo!(),
-            lexer::TokenKind::Bang => todo!(),
-            lexer::TokenKind::NotEqualTo => todo!(),
-            lexer::TokenKind::Or => todo!(),
-            lexer::TokenKind::And => todo!(),
-            lexer::TokenKind::GreaterThan => todo!(),
-            lexer::TokenKind::GreaterThanOrEqual => todo!(),
-            lexer::TokenKind::LesserThan => todo!(),
-            lexer::TokenKind::LesserThanOrEqual => todo!(),
+            lexer::TokenKind::Type => todo_token(token),
+            lexer::TokenKind::Struct => todo_token(token),
+            lexer::TokenKind::Comma => todo_token(token),
+            lexer::TokenKind::Colon => todo_token(token),
+            lexer::TokenKind::Semicolon => todo_token(token),
+            lexer::TokenKind::LParen => todo_token(token),
+            lexer::TokenKind::RParen => todo_token(token),
+            lexer::TokenKind::LBrace => todo_token(token),
+            lexer::TokenKind::RBrace => todo_token(token),
+            lexer::TokenKind::LBracket => todo_token(token),
+            lexer::TokenKind::RBracket => todo_token(token),
+            lexer::TokenKind::ThinArrow => todo_token(token),
+            lexer::TokenKind::Equal => todo_token(token),
+            lexer::TokenKind::Plus => todo_token(token),
+            lexer::TokenKind::Minus => todo_token(token),
+            lexer::TokenKind::Mul => todo_token(token),
+            lexer::TokenKind::Div => todo_token(token),
+            lexer::TokenKind::Dot => todo_token(token),
+            lexer::TokenKind::EqualTo => todo_token(token),
+            lexer::TokenKind::Bang => todo_token(token),
+            lexer::TokenKind::NotEqualTo => todo_token(token),
+            lexer::TokenKind::Or => todo_token(token),
+            lexer::TokenKind::And => todo_token(token),
+            lexer::TokenKind::GreaterThan => todo_token(token),
+            lexer::TokenKind::GreaterThanOrEqual => todo_token(token),
+            lexer::TokenKind::LesserThan => todo_token(token),
+            lexer::TokenKind::LesserThanOrEqual => todo_token(token),
         };
 
         match stmt {
             Ok(stmt) => Some(stmt),
             Err(p_error) => {
+                println!("exhausted");
                 self.exhausted = true;
                 Some(Stmt::Error(p_error))
             }

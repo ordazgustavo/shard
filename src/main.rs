@@ -66,15 +66,15 @@ fn main() {
 
     // log!("Finished", parser.len());
 
-    // println!();
-    // log!("Lexed:");
-    // for token in lexer {
-    //     match token.kind {
-    //         TokenKind::Unknown => error_at_range(token.span),
-    //         _ => println!("{token:?}"),
-    //     }
-    // }
-    //
+    println!();
+    log!("Lexed:");
+    for token in lexer {
+        match token.kind {
+            TokenKind::Unknown => error_at_range(token.span),
+            _ => println!("{token:?}"),
+        }
+    }
+
     println!();
     log!("Parsed:");
     for stmt in parser {
@@ -84,7 +84,10 @@ fn main() {
                 parser::ParserError::UnexpectedToken {
                     unexpected,
                     expected: _,
-                } => error_at_range(unexpected.span),
+                } => {
+                    println!("{unexpected:?}");
+                    error_at_range(unexpected.span);
+                }
                 parser::ParserError::ExpectedExpr(found) => error_at_range(found.span),
             },
             _ => println!("{stmt:?}"),
