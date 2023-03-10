@@ -154,59 +154,49 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_unknown(&mut self, idx: usize) -> Option<Token<'a>> {
-        let span = Span::from(idx);
-        let slice = &self.src[span.range()];
-        Some(Token::new(TokenKind::Unknown, slice, span))
-    }
-
     fn handle_literal(&mut self, kind: TokenKind, idx: usize) -> Option<Token<'a>> {
         let span = Span::from(idx);
         let slice = &self.src[span.range()];
         Some(Token::new(kind, slice, span))
     }
 
+    fn handle_span(&mut self, kind: TokenKind, start: usize, end: usize) -> Option<Token<'a>> {
+        let span = Span { start, end };
+        let slice = &self.src[span.range()];
+        Some(Token::new(kind, slice, span))
+    }
+
+    fn handle_unknown(&mut self, idx: usize) -> Option<Token<'a>> {
+        self.handle_literal(TokenKind::Unknown, idx)
+    }
+
     fn handle_dash(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '>') {
-            let span = Span { start, end };
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::ThinArrow, slice, span))
+            self.handle_span(TokenKind::ThinArrow, start, end)
         } else {
-            let span = Span::from(start);
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::Minus, slice, span))
+            self.handle_literal(TokenKind::Minus, start)
         }
     }
 
     fn handle_equal(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
-            let span = Span { start, end };
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::EqualTo, slice, span))
+            self.handle_span(TokenKind::EqualTo, start, end)
         } else {
-            let span = Span::from(start);
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::Equal, slice, span))
+            self.handle_literal(TokenKind::Equal, start)
         }
     }
 
     fn handle_bang(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
-            let span = Span { start, end };
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::NotEqualTo, slice, span))
+            self.handle_span(TokenKind::NotEqualTo, start, end)
         } else {
-            let span = Span::from(start);
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::Bang, slice, span))
+            self.handle_literal(TokenKind::Bang, start)
         }
     }
 
     fn handle_or(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '|') {
-            let span = Span { start, end };
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::Or, slice, span))
+            self.handle_span(TokenKind::Or, start, end)
         } else {
             self.handle_unknown(start)
         }
@@ -214,9 +204,7 @@ impl<'a> LexerIter<'a> {
 
     fn handle_and(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '&') {
-            let span = Span { start, end };
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::And, slice, span))
+            self.handle_span(TokenKind::And, start, end)
         } else {
             self.handle_unknown(start)
         }
@@ -224,25 +212,17 @@ impl<'a> LexerIter<'a> {
 
     fn handle_gt(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
-            let span = Span { start, end };
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::GreaterThanOrEqual, slice, span))
+            self.handle_span(TokenKind::GreaterThanOrEqual, start, end)
         } else {
-            let span = Span::from(start);
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::GreaterThan, slice, span))
+            self.handle_literal(TokenKind::GreaterThan, start)
         }
     }
 
     fn handle_lt(&mut self, start: usize) -> Option<Token<'a>> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
-            let span = Span { start, end };
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::LesserThanOrEqual, slice, span))
+            self.handle_span(TokenKind::LesserThanOrEqual, start, end)
         } else {
-            let span = Span::from(start);
-            let slice = &self.src[span.range()];
-            Some(Token::new(TokenKind::LesserThan, slice, span))
+            self.handle_literal(TokenKind::LesserThan, start)
         }
     }
 
@@ -256,10 +236,7 @@ impl<'a> LexerIter<'a> {
             }
         }
 
-        let span = Span { start, end };
-        let slice = &self.src[span.range()];
-
-        Some(Token::new(TokenKind::String, slice, span))
+        self.handle_span(TokenKind::String, start, end)
     }
 
     fn handle_number(&mut self, start: usize) -> Option<Token<'a>> {
@@ -279,13 +256,10 @@ impl<'a> LexerIter<'a> {
             }
         }
 
-        let span = Span { start, end };
-        let slice = &self.src[span.range()];
-
         if is_float {
-            Some(Token::new(TokenKind::Float, slice, span))
+            self.handle_span(TokenKind::Float, start, end)
         } else {
-            Some(Token::new(TokenKind::Integer, slice, span))
+            self.handle_span(TokenKind::Integer, start, end)
         }
     }
 
@@ -387,7 +361,7 @@ mod tests {
             fn $name() {
                 let token = Lexer::new($src).iter().next().unwrap();
 
-                assert_eq!(token.kind, $should_be, "Input was {}", $src);
+                assert_eq!(token.kind, $should_be, "Input was '{}'", $src);
             }
         };
         ($name:ident, $src:expr => $should_be:expr, $slice:expr) => {
@@ -395,8 +369,8 @@ mod tests {
             fn $name() {
                 let token = Lexer::new($src).iter().next().unwrap();
 
-                assert_eq!(token.kind, $should_be, "Input was {}", $src);
-                assert_eq!(token.text, $slice, "Input was {}", $src);
+                assert_eq!(token.kind, $should_be, "Input was '{}'", $src);
+                assert_eq!(token.text, $slice, "Input was '{}'", $src);
             }
         };
     }

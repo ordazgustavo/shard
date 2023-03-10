@@ -1,8 +1,7 @@
-fn add(a, b) {
-  a - b
+struct User {
+  name: String,
+  age: Int,
 }
 
-fn main() {
-  let name = "Shard";
-  let age = 69;
+fn create_user(name: String, age: Int) -> User {
 }

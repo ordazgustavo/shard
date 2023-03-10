@@ -10,7 +10,7 @@ fn error_at_range(span: Span) {
     let at = span.range().start;
     let (first, second) = CONTENTS.split_at(at);
 
-    let has_newline = first.lines().last().unwrap().contains('\n');
+    let has_newline = first.lines().last().unwrap_or("").contains('\n');
 
     let mut start = first.lines();
     let mut end = second.lines();
