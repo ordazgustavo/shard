@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 debug = true
 
 [dependencies]
+colored = "2.0.0"
 lexer = { path = "crates/lexer", package = "shard-lexer" }
 parser = { path = "crates/parser", package = "shard-parser" }
 

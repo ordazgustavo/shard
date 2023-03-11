@@ -1,7 +1,4 @@
-struct User {
-  name: String,
-  age: Int,
-}
-
-fn create_user(name: String, age: Int) -> User {
+enum Boolean {
+  True,
+  False,
 }

@@ -1,56 +1,70 @@
 #![allow(dead_code, unused_imports, unused_macros)]
 
+use colored::*;
+
 use lexer::{Lexer, Span, TokenKind};
-use parser::{Parser, Program};
+use parser::{Parser, ParserError, Program};
 
 const CONTENTS: &str = include_str!("../testfiles/main.sr");
 
-// TODO: figure out how to show EOF errors,
 fn error_at_range(span: Span) {
-    let at = span.range().start;
-    let (first, second) = CONTENTS.split_at(at);
+    let affected_line = CONTENTS
+        .lines()
+        .enumerate()
+        .find(|(_, line)| line.get(span.range()).is_some());
 
-    let has_newline = first.lines().last().unwrap_or("").contains('\n');
+    let sep = "|".blue().bold();
 
-    let mut start = first.lines();
-    let mut end = second.lines();
+    if let Some((idx, line)) = affected_line {
+        if idx > 0 {
+            let prev_line = CONTENTS.lines().nth(idx - 1);
+            if let Some(line) = prev_line {
+                println!("{ln:>2} {sep} {line}", ln = idx.to_string().blue().bold());
+            }
+        }
 
-    let row = std::cmp::max(start.clone().count(), 1);
-    let padding = span.range().count();
-    let col = start.clone().last().unwrap_or("").chars().count() + padding;
-    let sep = '|';
+        let (first, _) = CONTENTS.split_at(span.range().start);
 
-    println!("Syntax error: unexpected token");
-    if row > 1 {
-        println!(
-            "{row:>2} {sep} {prev}",
-            row = row - 1,
-            prev = start.next().unwrap()
-        );
-    } else {
-        println!("{:>2} {sep}", "");
+        let ln = idx + 1;
+        let offset = span.range().count();
+        let col = first.lines().last().unwrap_or("").chars().count() + offset;
+        println!("{ln:>2} {sep} {line}", ln = ln.to_string().blue().bold());
+        println!("{:>2} {sep} {:>col$}", "", "^".repeat(offset).red().bold());
+
+        let next_line = CONTENTS.lines().nth(idx + 1);
+        if let Some(line) = next_line {
+            let ln = ln + 1;
+            println!("{ln:>2} {sep} {line}", ln = ln.to_string().blue().bold());
+        }
     }
-    if has_newline {
-        println!("{row:>2} {sep} {start}", start = start.last().unwrap_or(""));
-    } else {
-        println!(
-            "{row:>2} {sep} {start}{end}",
-            start = start.last().unwrap_or(""),
-            end = end.next().unwrap()
-        );
-    }
-    println!("{:>2} {sep} {:>col$}", "", "^".repeat(padding));
-    if let Some(next) = end.next() {
-        println!("{row:>2} {sep} {next}", row = row + 1);
+}
+
+fn print_error(error: ParserError) {
+    use ParserError::*;
+
+    match error {
+        MissingToken(_) => todo!(),
+        UnexpectedToken {
+            unexpected,
+            expected: _,
+        } => {
+            println!(
+                "{} unexpected token {}",
+                "error:".red().bold(),
+                unexpected.kind
+            );
+            error_at_range(unexpected.span)
+        }
+        ExpectedExpr(_) => todo!(),
     }
 }
 
 macro_rules! log {
     ($title:expr) => {
-        println!("\x1b[1m\x1b[32m{}\x1b[0m", $title)
+        println!("{}", $title.green().bold())
     };
     ($title:expr, $desc:expr) => {
-        println!("\x1b[1m\x1b[32m{}\x1b[0m {}", $title, $desc)
+        println!("{} {}", $title.green().bold(), $desc)
     };
 }
 
@@ -63,8 +77,6 @@ macro_rules! log {
 fn main() {
     let lexer = Lexer::new(CONTENTS);
     let parser = Parser::new(lexer.iter());
-
-    // log!("Finished", parser.len());
 
     println!();
     log!("Lexed:");
@@ -79,17 +91,7 @@ fn main() {
     log!("Parsed:");
     for stmt in parser {
         match stmt {
-            parser::Stmt::Error(e) => match e {
-                parser::ParserError::MissingToken(_) => todo!(),
-                parser::ParserError::UnexpectedToken {
-                    unexpected,
-                    expected: _,
-                } => {
-                    println!("{unexpected:?}");
-                    error_at_range(unexpected.span);
-                }
-                parser::ParserError::ExpectedExpr(found) => error_at_range(found.span),
-            },
+            parser::Stmt::Error(e) => print_error(e),
             _ => println!("{stmt:?}"),
         }
     }

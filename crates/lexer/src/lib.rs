@@ -20,6 +20,7 @@ pub enum TokenKind {
     Fn,
     Type,
     Struct,
+    Enum,
 
     // Delimiters
     Comma,
@@ -281,6 +282,7 @@ impl<'a> LexerIter<'a> {
             "fn" => Some(Token::new(TokenKind::Fn, slice, span)),
             "type" => Some(Token::new(TokenKind::Type, slice, span)),
             "struct" => Some(Token::new(TokenKind::Struct, slice, span)),
+            "enum" => Some(Token::new(TokenKind::Enum, slice, span)),
             _ => Some(Token::new(TokenKind::Ident, slice, span)),
         }
     }
@@ -413,6 +415,7 @@ mod tests {
     lexer_test!(fn_keyword, "fn" => TokenKind::Fn);
     lexer_test!(type_keyword, "type" => TokenKind::Type);
     lexer_test!(struct_keyword, "struct" => TokenKind::Struct);
+    lexer_test!(enum_keyword, "enum" => TokenKind::Enum);
 
     lexer_test!(identifiers, "abc" => TokenKind::Ident, "abc");
     lexer_test!(identifiers_single_char, "a" => TokenKind::Ident, "a");

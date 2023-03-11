@@ -32,6 +32,7 @@ pub enum Stmt {
     Let(LetStmt),
     Fn(FnStmt),
     Struct(StructStmt),
+    Enum(EnumStmt),
 
     Expr(Expr),
 }
@@ -80,6 +81,16 @@ pub struct StructStmt {
     name: Ident,
     lbrace: TokenMeta,
     props: Vec<(Ident, Ident)>,
+    rbrace: TokenMeta,
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct EnumStmt {
+    enum_key: TokenMeta,
+    name: Ident,
+    lbrace: TokenMeta,
+    members: Vec<Ident>,
     rbrace: TokenMeta,
 }
 
@@ -344,6 +355,29 @@ where
             rbrace: self.ensure_token(TokenKind::RBrace)?.into(),
         }))
     }
+
+    fn collect_enum_members(&mut self) -> PResult<Vec<Ident>> {
+        let mut members = vec![];
+        while !self.next_is(TokenKind::RBrace) {
+            let Ok(member) = self.ensure_ident() else { break };
+            members.push(member);
+
+            if self.next_is(TokenKind::Comma) {
+                self.ensure_token(TokenKind::Comma)?;
+            }
+        }
+        Ok(members)
+    }
+
+    fn handle_enum(&mut self, token: Token) -> PResult<Stmt> {
+        Ok(Stmt::Enum(EnumStmt {
+            enum_key: token.into(),
+            name: self.ensure_ident()?,
+            lbrace: self.ensure_token(TokenKind::LBrace)?.into(),
+            members: self.collect_enum_members()?,
+            rbrace: self.ensure_token(TokenKind::RBrace)?.into(),
+        }))
+    }
 }
 
 fn todo_token(token: Token) -> PResult<Stmt> {
@@ -376,6 +410,7 @@ where
             TokenKind::Fn => self.handle_fn(token),
             TokenKind::Type => todo_token(token),
             TokenKind::Struct => self.handle_struct(token),
+            TokenKind::Enum => self.handle_enum(token),
             TokenKind::Comma => todo_token(token),
             TokenKind::Colon => todo_token(token),
             TokenKind::Semicolon => todo_token(token),
