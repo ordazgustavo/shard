@@ -78,10 +78,12 @@ impl Debug for Span {
 }
 
 impl Span {
+    #[must_use]
     pub fn range(&self) -> Range<usize> {
         self.start..self.end + 1
     }
 
+    #[must_use]
     pub fn empty() -> Self {
         Self { start: 0, end: 0 }
     }
@@ -124,10 +126,12 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    #[must_use]
     pub fn new(src: &'a str) -> Self {
         Self { src }
     }
 
+    #[must_use]
     pub fn iter(&self) -> LexerIter<'a> {
         LexerIter::new(self.src)
     }
@@ -159,23 +163,23 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_literal(&mut self, kind: TokenKind, idx: usize) -> Option<Token<'a>> {
+    fn handle_literal(&mut self, kind: TokenKind, idx: usize) -> Token<'a> {
         let span = Span::from(idx);
         let slice = &self.src[span.range()];
-        Some(Token::new(kind, slice, span))
+        Token::new(kind, slice, span)
     }
 
-    fn handle_span(&mut self, kind: TokenKind, start: usize, end: usize) -> Option<Token<'a>> {
+    fn handle_span(&mut self, kind: TokenKind, start: usize, end: usize) -> Token<'a> {
         let span = Span { start, end };
         let slice = &self.src[span.range()];
-        Some(Token::new(kind, slice, span))
+        Token::new(kind, slice, span)
     }
 
-    fn handle_unknown(&mut self, idx: usize) -> Option<Token<'a>> {
+    fn handle_unknown(&mut self, idx: usize) -> Token<'a> {
         self.handle_literal(TokenKind::Unknown, idx)
     }
 
-    fn handle_dash(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_dash(&mut self, start: usize) -> Token<'a> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '>') {
             self.handle_span(TokenKind::ThinArrow, start, end)
         } else {
@@ -183,7 +187,7 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_equal(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_equal(&mut self, start: usize) -> Token<'a> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
             self.handle_span(TokenKind::EqualTo, start, end)
         } else {
@@ -191,7 +195,7 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_bang(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_bang(&mut self, start: usize) -> Token<'a> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
             self.handle_span(TokenKind::NotEqualTo, start, end)
         } else {
@@ -199,7 +203,7 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_or(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_or(&mut self, start: usize) -> Token<'a> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '|') {
             self.handle_span(TokenKind::Or, start, end)
         } else {
@@ -207,7 +211,7 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_and(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_and(&mut self, start: usize) -> Token<'a> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '&') {
             self.handle_span(TokenKind::And, start, end)
         } else {
@@ -215,7 +219,7 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_gt(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_gt(&mut self, start: usize) -> Token<'a> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
             self.handle_span(TokenKind::GreaterThanOrEqual, start, end)
         } else {
@@ -223,7 +227,7 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_lt(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_lt(&mut self, start: usize) -> Token<'a> {
         if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
             self.handle_span(TokenKind::LesserThanOrEqual, start, end)
         } else {
@@ -231,7 +235,7 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_string(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_string(&mut self, start: usize) -> Token<'a> {
         let mut end = start;
 
         for (idx, ch) in self.chars.by_ref() {
@@ -244,7 +248,7 @@ impl<'a> LexerIter<'a> {
         self.handle_span(TokenKind::String, start, end)
     }
 
-    fn handle_number(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_number(&mut self, start: usize) -> Token<'a> {
         let mut end = start;
 
         let mut is_float = false;
@@ -268,7 +272,7 @@ impl<'a> LexerIter<'a> {
         }
     }
 
-    fn handle_ident(&mut self, start: usize) -> Option<Token<'a>> {
+    fn handle_ident(&mut self, start: usize) -> Token<'a> {
         let mut end = start;
 
         while let Some((idx, _)) = self
@@ -293,11 +297,11 @@ impl<'a> LexerIter<'a> {
             _ => TokenKind::Ident,
         };
 
-        Some(Token::new(kind, slice, span))
+        Token::new(kind, slice, span)
     }
 
     fn handle_next_char(&mut self, ch: char, idx: usize) -> Option<Token<'a>> {
-        match ch {
+        let token = match ch {
             '(' => self.handle_literal(TokenKind::LParen, idx),
             ')' => self.handle_literal(TokenKind::RParen, idx),
             '{' => self.handle_literal(TokenKind::LBrace, idx),
@@ -323,10 +327,12 @@ impl<'a> LexerIter<'a> {
             c @ '_' | c if c.is_alphabetic() => self.handle_ident(idx),
             c if c.is_whitespace() => {
                 while self.chars.next_if(|(_, ch)| ch.is_whitespace()).is_some() {}
-                self.next()
+                return self.next();
             }
             _ => self.handle_unknown(idx),
-        }
+        };
+
+        Some(token)
     }
 }
 
@@ -334,16 +340,16 @@ impl<'a> Iterator for LexerIter<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.chars.next() {
-            Some((idx, ch)) => self.handle_next_char(ch, idx),
-            None => match self.exhausted {
-                true => None,
-                false => {
-                    self.exhausted = true;
-                    Some(Token::new(TokenKind::Eof, "", Span::empty()))
-                }
-            },
+        if self.exhausted {
+            return None;
         }
+
+        if let Some((idx, ch)) = self.chars.next() {
+            return self.handle_next_char(ch, idx);
+        }
+
+        self.exhausted = true;
+        Some(Token::new(TokenKind::Eof, "", Span::empty()))
     }
 }
 

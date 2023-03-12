@@ -326,7 +326,10 @@ where
 
     fn ensure_token(&mut self, kind: TokenKind) -> PResult<Token> {
         // Panic because it's an implementation error, we should always hit Eof before None
-        let token = self.tokens.next().expect(&format!("expected token {kind}"));
+        let token = self
+            .tokens
+            .next()
+            .unwrap_or_else(|| panic!("expected token {kind}"));
         if token.kind != kind {
             return Err(ParserError::UnexpectedToken {
                 unexpected: token.into(),

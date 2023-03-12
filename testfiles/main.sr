@@ -1,2 +1,50 @@
-fn gen_uuid() -> Uuid { "9cc20af5-283e-4ec8-8fee-ce6298305b96" }
-fn gen_uuid() -> Uuid { return "9cc20af5-283e-4ec8-8fee-ce6298305b96"; }
+fn add(a: usize, b: usize) -> usize { a + b }
+fn add(a: usize, b: usize) -> usize { return a + b; }
+fn sub(a: usize, b: usize) -> usize { a - b }
+fn sub(a: usize, b: usize) -> usize { return a - b; }
+fn mul(a: usize, b: usize) -> usize { a * b }
+fn mul(a: usize, b: usize) -> usize { return a * b; }
+fn div(a: usize, b: usize) -> usize { a / b }
+fn div(a: usize, b: usize) -> usize { return a / b; }
+fn gt(a: usize, b: usize) -> bool { a > b }
+fn gt(a: usize, b: usize) -> bool { return a > b; }
+fn gte(a: usize, b: usize) -> bool { a >= b }
+fn gte(a: usize, b: usize) -> bool { return a >= b; }
+fn lt(a: usize, b: usize) -> bool { a < b }
+fn lt(a: usize, b: usize) -> bool { return a < b; }
+fn lte(a: usize, b: usize) -> bool { a <= b }
+fn lte(a: usize, b: usize) -> bool { return a <= b; }
+fn eq(a: usize, b: usize) -> bool { a == b }
+fn eq(a: usize, b: usize) -> bool { return a == b; }
+fn neq(a: usize, b: usize) -> bool { a != b }
+fn neq(a: usize, b: usize) -> bool { return a != b; }
+fn and(lhs: bool, rhs: bool) -> bool { lhs && rhs }
+fn and(lhs: bool, rhs: bool) -> bool { return lhs && rhs; }
+fn or(lhs: bool, rhs: bool) -> bool { lhs || rhs }
+fn or(lhs: bool, rhs: bool) -> bool { return lhs || rhs; }
+fn neg(a: bool) -> bool { !a }
+fn neg(a: bool) -> bool { return !a; }
+struct User { name: String, age: usize }
+fn gen_uuid() -> String { "9cc20af5-283e-4ec8-8fee-ce6298305b96" }
+fn gen_uuid() -> String { return "9cc20af5-283e-4ec8-8fee-ce6298305b96"; }
+enum Boolean { True, False }
+fn boolean(bool: Boolean) -> bool { true }
+fn boolean(bool: Boolean) -> bool { return false; }
+fn main() {
+  let long_string = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
+  let float = 420.69;
+  let a = 42069;
+  let b = 42500;
+  print(add(a, b));
+  print(neg(a));
+  print(and(true, true));
+  print(and(false, true));
+  print(and(true, false));
+  print(and(false, false));
+  print(or(true, true));
+  print(or(false, true));
+  print(or(true, false));
+  print(or(false, false));
+  let uuid = gen_uuid();
+  print(uuid);
+}

@@ -1,5 +1,4 @@
 // #![allow(dead_code, unused_imports, unused_macros)]
-
 use colored::*;
 
 use lexer::{Lexer, Span, TokenKind};
@@ -7,9 +6,9 @@ use parser::{Parser, ParserError};
 
 const CONTENTS: &str = include_str!("../testfiles/main.sr");
 
-fn error_at_range(span: Span) {
+fn error_at_range(span: &Span) {
     let lines = CONTENTS.lines().enumerate();
-    let idx = CONTENTS[..span.range().start + 1].lines().count() - 1;
+    let idx = CONTENTS[..=span.range().start].lines().count() - 1;
     let (ln, line) = lines.clone().nth(idx).expect("Expected line");
 
     let sep = "|".blue().bold();
@@ -25,7 +24,7 @@ fn error_at_range(span: Span) {
     }
 
     let offset = span.range().count();
-    let col = CONTENTS[..span.range().start + 1]
+    let col = CONTENTS[..=span.range().start]
         .lines()
         .last()
         .unwrap_or("")
@@ -47,10 +46,8 @@ fn error_at_range(span: Span) {
 }
 
 fn print_error(error: ParserError) {
-    use ParserError::*;
-
     match error {
-        UnexpectedToken {
+        ParserError::UnexpectedToken {
             unexpected,
             expected,
         } => {
@@ -60,17 +57,17 @@ fn print_error(error: ParserError) {
                 unexpected.kind
             );
             if let Some(kind) = expected {
-                println!("expected {}", kind);
+                println!("expected {kind}");
             }
-            error_at_range(unexpected.span)
+            error_at_range(&unexpected.span);
         }
-        ExpectedExpr(unexpected) => {
+        ParserError::ExpectedExpr(unexpected) => {
             println!(
                 "{} unexpected token {}",
                 "error:".red().bold(),
                 unexpected.kind
             );
-            error_at_range(unexpected.span)
+            error_at_range(&unexpected.span);
         }
     }
 }
@@ -98,17 +95,17 @@ fn main() {
     log!("Lexed:");
     for token in lexer {
         match token.kind {
-            TokenKind::Unknown => error_at_range(token.span),
+            TokenKind::Unknown => error_at_range(&token.span),
             _ => println!("{token:?}"),
         }
     }
 
     println!();
     log!("Parsed:");
-    for stmt in parser {
-        match stmt {
+    for decl in parser {
+        match decl {
             parser::Decl::Error(e) => print_error(e),
-            _ => println!("{stmt:?}"),
+            _ => println!("{decl:?}"),
         }
     }
 }
