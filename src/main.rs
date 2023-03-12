@@ -1,41 +1,48 @@
-#![allow(dead_code, unused_imports, unused_macros)]
+// #![allow(dead_code, unused_imports, unused_macros)]
 
 use colored::*;
 
 use lexer::{Lexer, Span, TokenKind};
-use parser::{Parser, ParserError, Program};
+use parser::{Parser, ParserError};
 
 const CONTENTS: &str = include_str!("../testfiles/main.sr");
 
 fn error_at_range(span: Span) {
-    let affected_line = CONTENTS
-        .lines()
-        .enumerate()
-        .find(|(_, line)| line.get(span.range()).is_some());
+    let lines = CONTENTS.lines().enumerate();
+    let idx = CONTENTS[..span.range().start + 1].lines().count() - 1;
+    let (ln, line) = lines.clone().nth(idx).expect("Expected line");
 
     let sep = "|".blue().bold();
 
-    if let Some((idx, line)) = affected_line {
-        if idx > 0 {
-            let prev_line = CONTENTS.lines().nth(idx - 1);
-            if let Some(line) = prev_line {
-                println!("{ln:>2} {sep} {line}", ln = idx.to_string().blue().bold());
-            }
+    if idx > 0 {
+        let prev_line = lines.clone().nth(idx - 1);
+        if let Some((ln, line)) = prev_line {
+            println!(
+                "{ln:>2} {sep} {line}",
+                ln = (ln + 1).to_string().blue().bold()
+            );
         }
+    }
 
-        let (first, _) = CONTENTS.split_at(span.range().start);
+    let offset = span.range().count();
+    let col = CONTENTS[..span.range().start + 1]
+        .lines()
+        .last()
+        .unwrap_or("")
+        .chars()
+        .count();
 
-        let ln = idx + 1;
-        let offset = span.range().count();
-        let col = first.lines().last().unwrap_or("").chars().count() + offset;
-        println!("{ln:>2} {sep} {line}", ln = ln.to_string().blue().bold());
-        println!("{:>2} {sep} {:>col$}", "", "^".repeat(offset).red().bold());
+    println!(
+        "{ln:>2} {sep} {line}",
+        ln = (ln + 1).to_string().blue().bold()
+    );
+    println!("{:>2} {sep} {:>col$}", "", "^".repeat(offset).red().bold());
 
-        let next_line = CONTENTS.lines().nth(idx + 1);
-        if let Some(line) = next_line {
-            let ln = ln + 1;
-            println!("{ln:>2} {sep} {line}", ln = ln.to_string().blue().bold());
-        }
+    if let Some((ln, line)) = lines.clone().nth(idx + 1) {
+        println!(
+            "{ln:>2} {sep} {line}",
+            ln = (ln + 1).to_string().blue().bold()
+        );
     }
 }
 
@@ -43,11 +50,21 @@ fn print_error(error: ParserError) {
     use ParserError::*;
 
     match error {
-        MissingToken(_) => todo!(),
         UnexpectedToken {
             unexpected,
-            expected: _,
+            expected,
         } => {
+            println!(
+                "{} unexpected token {}",
+                "error:".red().bold(),
+                unexpected.kind
+            );
+            if let Some(kind) = expected {
+                println!("expected {}", kind);
+            }
+            error_at_range(unexpected.span)
+        }
+        ExpectedExpr(unexpected) => {
             println!(
                 "{} unexpected token {}",
                 "error:".red().bold(),
@@ -55,16 +72,15 @@ fn print_error(error: ParserError) {
             );
             error_at_range(unexpected.span)
         }
-        ExpectedExpr(_) => todo!(),
     }
 }
 
 macro_rules! log {
     ($title:expr) => {
-        println!("{}", $title.green().bold())
+        println!("{}", $title.green().bold());
     };
     ($title:expr, $desc:expr) => {
-        println!("{} {}", $title.green().bold(), $desc)
+        println!("{} {}", $title.green().bold(), $desc);
     };
 }
 
@@ -76,7 +92,7 @@ macro_rules! log {
 
 fn main() {
     let lexer = Lexer::new(CONTENTS);
-    let parser = Parser::new(lexer.iter());
+    let parser = Parser::new(lexer.clone());
 
     println!();
     log!("Lexed:");
@@ -91,7 +107,7 @@ fn main() {
     log!("Parsed:");
     for stmt in parser {
         match stmt {
-            parser::Stmt::Error(e) => print_error(e),
+            parser::Decl::Error(e) => print_error(e),
             _ => println!("{stmt:?}"),
         }
     }

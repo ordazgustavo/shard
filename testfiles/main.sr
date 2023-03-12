@@ -1,4 +1,2 @@
-enum Boolean {
-  True,
-  False,
-}
+fn gen_uuid() -> Uuid { "9cc20af5-283e-4ec8-8fee-ce6298305b96" }
+fn gen_uuid() -> Uuid { return "9cc20af5-283e-4ec8-8fee-ce6298305b96"; }

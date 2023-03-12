@@ -14,6 +14,8 @@ pub enum TokenKind {
     String,
     Integer,
     Float,
+    True,
+    False,
 
     // Structures
     Let,
@@ -21,6 +23,8 @@ pub enum TokenKind {
     Type,
     Struct,
     Enum,
+
+    Return,
 
     // Delimiters
     Comma,
@@ -277,14 +281,19 @@ impl<'a> LexerIter<'a> {
         let span = Span { start, end };
         let slice = &self.src[span.range()];
 
-        match slice {
-            "let" => Some(Token::new(TokenKind::Let, slice, span)),
-            "fn" => Some(Token::new(TokenKind::Fn, slice, span)),
-            "type" => Some(Token::new(TokenKind::Type, slice, span)),
-            "struct" => Some(Token::new(TokenKind::Struct, slice, span)),
-            "enum" => Some(Token::new(TokenKind::Enum, slice, span)),
-            _ => Some(Token::new(TokenKind::Ident, slice, span)),
-        }
+        let kind = match slice {
+            "let" => TokenKind::Let,
+            "fn" => TokenKind::Fn,
+            "type" => TokenKind::Type,
+            "struct" => TokenKind::Struct,
+            "enum" => TokenKind::Enum,
+            "return" => TokenKind::Return,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            _ => TokenKind::Ident,
+        };
+
+        Some(Token::new(kind, slice, span))
     }
 
     fn handle_next_char(&mut self, ch: char, idx: usize) -> Option<Token<'a>> {
@@ -416,6 +425,9 @@ mod tests {
     lexer_test!(type_keyword, "type" => TokenKind::Type);
     lexer_test!(struct_keyword, "struct" => TokenKind::Struct);
     lexer_test!(enum_keyword, "enum" => TokenKind::Enum);
+    lexer_test!(return_keyword, "return" => TokenKind::Return);
+    lexer_test!(true_keyword, "true" => TokenKind::True);
+    lexer_test!(false_keyword, "false" => TokenKind::False);
 
     lexer_test!(identifiers, "abc" => TokenKind::Ident, "abc");
     lexer_test!(identifiers_single_char, "a" => TokenKind::Ident, "a");

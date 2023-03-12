@@ -1,5 +1,4 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use parser::Program;
 
 const CONTENTS: &str = include_str!("../testfiles/parser.sr");
 
@@ -8,9 +7,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let lexer = lexer::Lexer::new(CONTENTS);
 
-            parser::Parser::new(black_box(lexer.iter()))
+            parser::Parser::new(black_box(lexer))
                 .iter()
-                .collect::<Program>()
+                .collect::<parser::Program>()
         })
     });
 }

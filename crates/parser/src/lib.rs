@@ -17,29 +17,8 @@ impl<'a> From<Token<'a>> for TokenMeta {
     }
 }
 
-pub struct Program(pub Vec<Stmt>);
-
-impl FromIterator<Stmt> for Program {
-    fn from_iter<T: IntoIterator<Item = Stmt>>(iter: T) -> Self {
-        Program(iter.into_iter().collect())
-    }
-}
-
-#[derive(Debug)]
-pub enum Stmt {
-    Error(ParserError),
-
-    Let(LetStmt),
-    Fn(FnStmt),
-    Struct(StructStmt),
-    Enum(EnumStmt),
-
-    Expr(Expr),
-}
-
 #[derive(Debug)]
 pub enum ParserError {
-    MissingToken(TokenKind),
     UnexpectedToken {
         unexpected: TokenMeta,
         expected: Option<TokenKind>,
@@ -49,49 +28,75 @@ pub enum ParserError {
 
 type PResult<T> = Result<T, ParserError>;
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct LetStmt {
-    let_key: TokenMeta,
-    ty: Option<TokenMeta>,
-    name: Ident,
-    equal: TokenMeta,
-    expr: Expr,
-    semi: TokenMeta,
+fn todo_token<T>(token: Token) -> PResult<T> {
+    Err(ParserError::UnexpectedToken {
+        unexpected: token.into(),
+        expected: None,
+    })
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct FnStmt {
-    fn_key: TokenMeta,
-    name: Ident,
-    lparen: TokenMeta,
-    args: Vec<(Ident, Ident)>,
-    rparen: TokenMeta,
-    ret_ty: Option<Ident>,
-    lbrace: TokenMeta,
-    body: Vec<Stmt>,
-    rbrace: TokenMeta,
+pub struct Program(pub Vec<Decl>);
+
+impl FromIterator<Decl> for Program {
+    fn from_iter<T: IntoIterator<Item = Decl>>(iter: T) -> Self {
+        Program(iter.into_iter().collect())
+    }
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
-pub struct StructStmt {
-    struct_key: TokenMeta,
-    name: Ident,
-    lbrace: TokenMeta,
-    props: Vec<(Ident, Ident)>,
-    rbrace: TokenMeta,
+pub enum Decl {
+    Error(ParserError),
+
+    Stmt(Stmt),
+    Expr(Expr),
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
-pub struct EnumStmt {
-    enum_key: TokenMeta,
-    name: Ident,
-    lbrace: TokenMeta,
-    members: Vec<Ident>,
-    rbrace: TokenMeta,
+pub enum Stmt {
+    Let {
+        let_key: TokenMeta,
+        ty: Option<TokenMeta>,
+        name: Ident,
+        equal: TokenMeta,
+        expr: Expr,
+        semi: TokenMeta,
+    },
+    Fn {
+        fn_key: TokenMeta,
+        name: Ident,
+        lparen: TokenMeta,
+        args: Vec<(Ident, Ident)>,
+        rparen: TokenMeta,
+        ret_ty: Option<Ident>,
+        lbrace: TokenMeta,
+        body: Vec<Decl>,
+        rbrace: TokenMeta,
+    },
+    Struct {
+        struct_key: TokenMeta,
+        name: Ident,
+        lbrace: TokenMeta,
+        props: Vec<(Ident, Ident)>,
+        rbrace: TokenMeta,
+    },
+    Enum {
+        enum_key: TokenMeta,
+        name: Ident,
+        lbrace: TokenMeta,
+        members: Vec<Ident>,
+        rbrace: TokenMeta,
+    },
+
+    Expr {
+        expr: Expr,
+        semi: TokenMeta,
+    },
+
+    Return {
+        ret: TokenMeta,
+        expr: Option<Expr>,
+        semi: TokenMeta,
+    },
 }
 
 #[derive(Debug)]
@@ -105,21 +110,45 @@ pub enum Expr {
     String(String),
     Integer(String),
     Float(String),
+    Boolean(bool),
 
-    Infix(InfixExpr),
-}
+    Call {
+        name: Ident,
+        lparen: TokenMeta,
+        args: Vec<Expr>,
+        rparen: TokenMeta,
+    },
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct InfixExpr {
-    left: Box<Expr>,
-    operator: Operator,
-    right: Box<Expr>,
+    Infix {
+        left: Box<Expr>,
+        operator: Operator,
+        right: Box<Expr>,
+    },
+    Prefix {
+        operator: Operator,
+        right: Box<Expr>,
+    },
 }
 
 #[derive(Debug)]
 pub enum Operator {
     Plus,
+    Minus,
+    Mul,
+    Div,
+    EqualTo,
+
+    // Prefix
+    Bang,
+
+    // Comparison
+    NotEqualTo,
+    Or,
+    And,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LesserThan,
+    LesserThanOrEqual,
 }
 
 pub struct Parser<T> {
@@ -130,8 +159,13 @@ impl<'a, T> Parser<T>
 where
     T: Iterator<Item = Token<'a>>,
 {
-    pub fn new(tokens: T) -> Self {
-        Self { tokens }
+    pub fn new<U>(iter: U) -> Self
+    where
+        U: IntoIterator<IntoIter = T>,
+    {
+        Self {
+            tokens: iter.into_iter(),
+        }
     }
 
     pub fn iter(self) -> ParserIter<'a, T> {
@@ -146,7 +180,7 @@ impl<'a, T> IntoIterator for Parser<T>
 where
     T: Iterator<Item = Token<'a>>,
 {
-    type Item = Stmt;
+    type Item = Decl;
 
     type IntoIter = ParserIter<'a, T>;
 
@@ -171,36 +205,50 @@ where
         self.tokens.peek().map_or(false, |t| t.kind == kind)
     }
 
-    fn token_to_expr(token: Token) -> PResult<Expr> {
-        match token.kind {
-            TokenKind::Ident => Ok(Expr::Ident(Ident {
-                name: token.text.to_string(),
-            })),
-            TokenKind::String => Ok(Expr::String(token.text.to_string())),
-            TokenKind::Integer => Ok(Expr::Integer(token.text.to_string())),
-            TokenKind::Float => Ok(Expr::Float(token.text.to_string())),
-            _ => Err(ParserError::ExpectedExpr(token.into())),
-        }
+    fn token_is_operator(token: &Token) -> bool {
+        matches!(
+            token.kind,
+            TokenKind::Plus
+                | TokenKind::Minus
+                | TokenKind::Mul
+                | TokenKind::Div
+                | TokenKind::Bang
+                | TokenKind::EqualTo
+                | TokenKind::NotEqualTo
+                | TokenKind::Or
+                | TokenKind::And
+                | TokenKind::GreaterThan
+                | TokenKind::GreaterThanOrEqual
+                | TokenKind::LesserThan
+                | TokenKind::LesserThanOrEqual
+        )
     }
 
-    fn ensure_operator(&mut self) -> PResult<Operator> {
-        let Some(token) = self.tokens.next() else { todo!() };
+    fn next_is_operator(&mut self) -> bool {
+        self.tokens
+            .peek()
+            .map_or(false, |token| Self::token_is_operator(token))
+    }
 
+    fn next_if(&mut self, kind: TokenKind) -> Option<Token> {
+        self.tokens.next_if(|token| token.kind == kind)
+    }
+
+    fn token_to_operator(token: Token) -> PResult<Operator> {
         let op = match token.kind {
             TokenKind::Plus => Operator::Plus,
-            TokenKind::Minus => todo!(),
-            TokenKind::Mul => todo!(),
-            TokenKind::Div => todo!(),
-            TokenKind::Dot => todo!(),
-            TokenKind::EqualTo => todo!(),
-            TokenKind::Bang => todo!(),
-            TokenKind::NotEqualTo => todo!(),
-            TokenKind::Or => todo!(),
-            TokenKind::And => todo!(),
-            TokenKind::GreaterThan => todo!(),
-            TokenKind::GreaterThanOrEqual => todo!(),
-            TokenKind::LesserThan => todo!(),
-            TokenKind::LesserThanOrEqual => todo!(),
+            TokenKind::Minus => Operator::Minus,
+            TokenKind::Mul => Operator::Mul,
+            TokenKind::Div => Operator::Div,
+            TokenKind::Bang => Operator::Bang,
+            TokenKind::EqualTo => Operator::EqualTo,
+            TokenKind::NotEqualTo => Operator::NotEqualTo,
+            TokenKind::Or => Operator::Or,
+            TokenKind::And => Operator::And,
+            TokenKind::GreaterThan => Operator::GreaterThan,
+            TokenKind::GreaterThanOrEqual => Operator::GreaterThanOrEqual,
+            TokenKind::LesserThan => Operator::LesserThan,
+            TokenKind::LesserThanOrEqual => Operator::LesserThanOrEqual,
             _ => {
                 return Err(ParserError::UnexpectedToken {
                     unexpected: token.into(),
@@ -212,41 +260,73 @@ where
         Ok(op)
     }
 
-    fn handle_expr_stmt(&mut self, token: Token) -> PResult<Stmt> {
-        let left = Self::token_to_expr(token)?;
+    fn ensure_operator(&mut self) -> PResult<Operator> {
+        let token = self.tokens.next().expect("Expected to find an operator");
 
-        if self.next_is(TokenKind::Plus) {
-            let operator = self.ensure_operator()?;
-            let right = self.ensure_expr()?;
-            return Ok(Stmt::Expr(Expr::Infix(InfixExpr {
-                left: Box::new(left),
-                operator,
-                right: Box::new(right),
-            })));
-        }
-
-        Ok(Stmt::Expr(left))
+        Self::token_to_operator(token)
     }
 
-    fn ensure_expr(&mut self) -> PResult<Expr> {
-        let Some(token) = self.tokens.next() else { todo!() };
+    fn collect_call_args(&mut self) -> PResult<Vec<Expr>> {
+        let mut args = vec![];
+        while !self.next_is(TokenKind::RParen) {
+            args.push(self.ensure_expr()?);
+            self.next_if(TokenKind::Comma);
+        }
 
-        let left = Self::token_to_expr(token)?;
-        if self.next_is(TokenKind::Plus) {
+        Ok(args)
+    }
+
+    fn token_to_expr(&mut self, token: Token) -> PResult<Expr> {
+        if Self::token_is_operator(&token) {
+            return self.token_to_prefix(token);
+        }
+
+        if self.next_is(TokenKind::LParen) {
+            return Ok(Expr::Call {
+                name: Ident {
+                    name: token.text.to_string(),
+                },
+                lparen: self.ensure_token(TokenKind::LParen)?.into(),
+                args: self.collect_call_args()?,
+                rparen: self.ensure_token(TokenKind::RParen)?.into(),
+            });
+        }
+
+        let left = match token.kind {
+            TokenKind::Ident => Expr::Ident(Ident {
+                name: token.text.to_string(),
+            }),
+            TokenKind::String => Expr::String(token.text.to_string()),
+            TokenKind::Integer => Expr::Integer(token.text.to_string()),
+            TokenKind::Float => Expr::Float(token.text.to_string()),
+            TokenKind::True => Expr::Boolean(true),
+            TokenKind::False => Expr::Boolean(false),
+            _ => return Err(ParserError::ExpectedExpr(token.into())),
+        };
+
+        if self.next_is_operator() {
             let operator = self.ensure_operator()?;
             let right = self.ensure_expr()?;
-            return Ok(Expr::Infix(InfixExpr {
+
+            return Ok(Expr::Infix {
                 left: Box::new(left),
                 operator,
                 right: Box::new(right),
-            }));
+            });
         }
 
         Ok(left)
     }
 
+    fn ensure_expr(&mut self) -> PResult<Expr> {
+        let token = self.tokens.next().expect("Expected to find an Expr");
+
+        self.token_to_expr(token)
+    }
+
     fn ensure_token(&mut self, kind: TokenKind) -> PResult<Token> {
-        let Some(token) = self.tokens.next() else { return Err(ParserError::MissingToken(kind)) };
+        // Panic because it's an implementation error, we should always hit Eof before None
+        let token = self.tokens.next().expect(&format!("expected token {kind}"));
         if token.kind != kind {
             return Err(ParserError::UnexpectedToken {
                 unexpected: token.into(),
@@ -264,8 +344,19 @@ where
         })
     }
 
-    fn handle_let(&mut self, token: Token) -> PResult<Stmt> {
-        Ok(Stmt::Let(LetStmt {
+    fn handle_expr(&mut self, token: Token) -> PResult<Decl> {
+        let expr = self.token_to_expr(token)?;
+        match self.next_if(TokenKind::Semicolon) {
+            Some(semi) => Ok(Decl::Stmt(Stmt::Expr {
+                expr,
+                semi: semi.into(),
+            })),
+            None => Ok(Decl::Expr(expr)),
+        }
+    }
+
+    fn handle_let(&mut self, token: Token) -> PResult<Decl> {
+        Ok(Decl::Stmt(Stmt::Let {
             let_key: token.into(),
             ty: None,
             name: self.ensure_ident()?,
@@ -275,11 +366,11 @@ where
         }))
     }
 
-    fn collect_body(&mut self) -> PResult<Vec<Stmt>> {
+    fn collect_body(&mut self) -> PResult<Vec<Decl>> {
         let mut body = vec![];
         while !self.next_is(TokenKind::RBrace) {
             match self.next() {
-                Some(Stmt::Error(error)) => return Err(error),
+                Some(Decl::Error(error)) => return Err(error),
                 Some(stmt) => body.push(stmt),
                 None => break,
             };
@@ -314,8 +405,8 @@ where
         Ok(Some(ret_ty))
     }
 
-    fn handle_fn(&mut self, token: Token) -> PResult<Stmt> {
-        Ok(Stmt::Fn(FnStmt {
+    fn handle_fn(&mut self, token: Token) -> PResult<Decl> {
+        Ok(Decl::Stmt(Stmt::Fn {
             fn_key: token.into(),
             name: self.ensure_ident()?,
             lparen: self.ensure_token(TokenKind::LParen)?.into(),
@@ -346,8 +437,8 @@ where
         Ok(idents)
     }
 
-    fn handle_struct(&mut self, token: Token) -> PResult<Stmt> {
-        Ok(Stmt::Struct(StructStmt {
+    fn handle_struct(&mut self, token: Token) -> PResult<Decl> {
+        Ok(Decl::Stmt(Stmt::Struct {
             struct_key: token.into(),
             name: self.ensure_ident()?,
             lbrace: self.ensure_token(TokenKind::LBrace)?.into(),
@@ -358,19 +449,16 @@ where
 
     fn collect_enum_members(&mut self) -> PResult<Vec<Ident>> {
         let mut members = vec![];
-        while !self.next_is(TokenKind::RBrace) {
-            let Ok(member) = self.ensure_ident() else { break };
-            members.push(member);
+        while self.next_is(TokenKind::Ident) {
+            members.push(self.ensure_ident()?);
 
-            if self.next_is(TokenKind::Comma) {
-                self.ensure_token(TokenKind::Comma)?;
-            }
+            self.next_if(TokenKind::Comma);
         }
         Ok(members)
     }
 
-    fn handle_enum(&mut self, token: Token) -> PResult<Stmt> {
-        Ok(Stmt::Enum(EnumStmt {
+    fn handle_enum(&mut self, token: Token) -> PResult<Decl> {
+        Ok(Decl::Stmt(Stmt::Enum {
             enum_key: token.into(),
             name: self.ensure_ident()?,
             lbrace: self.ensure_token(TokenKind::LBrace)?.into(),
@@ -378,20 +466,32 @@ where
             rbrace: self.ensure_token(TokenKind::RBrace)?.into(),
         }))
     }
-}
 
-fn todo_token(token: Token) -> PResult<Stmt> {
-    Err(ParserError::UnexpectedToken {
-        unexpected: token.into(),
-        expected: None,
-    })
+    fn handle_return(&mut self, token: Token) -> PResult<Decl> {
+        Ok(Decl::Stmt(Stmt::Return {
+            ret: token.into(),
+            expr: self.ensure_expr()?.into(),
+            semi: self.ensure_token(TokenKind::Semicolon)?.into(),
+        }))
+    }
+
+    fn token_to_prefix(&mut self, token: Token) -> PResult<Expr> {
+        Ok(Expr::Prefix {
+            operator: Self::token_to_operator(token)?,
+            right: self.ensure_expr()?.into(),
+        })
+    }
+
+    fn handle_prefix(&mut self, token: Token) -> PResult<Decl> {
+        Ok(Decl::Expr(self.token_to_prefix(token)?))
+    }
 }
 
 impl<'a, T> Iterator for ParserIter<'a, T>
 where
     T: Iterator<Item = Token<'a>>,
 {
-    type Item = Stmt;
+    type Item = Decl;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.exhausted {
@@ -402,15 +502,18 @@ where
         let stmt = match token.kind {
             TokenKind::Unknown => todo_token(token),
             TokenKind::Eof => return None,
-            TokenKind::Ident => self.handle_expr_stmt(token),
-            TokenKind::String => self.handle_expr_stmt(token),
-            TokenKind::Integer => self.handle_expr_stmt(token),
-            TokenKind::Float => self.handle_expr_stmt(token),
+            TokenKind::Ident => self.handle_expr(token),
+            TokenKind::String => self.handle_expr(token),
+            TokenKind::Integer => self.handle_expr(token),
+            TokenKind::Float => self.handle_expr(token),
+            TokenKind::True => self.handle_expr(token),
+            TokenKind::False => self.handle_expr(token),
             TokenKind::Let => self.handle_let(token),
             TokenKind::Fn => self.handle_fn(token),
             TokenKind::Type => todo_token(token),
             TokenKind::Struct => self.handle_struct(token),
             TokenKind::Enum => self.handle_enum(token),
+            TokenKind::Return => self.handle_return(token),
             TokenKind::Comma => todo_token(token),
             TokenKind::Colon => todo_token(token),
             TokenKind::Semicolon => todo_token(token),
@@ -428,7 +531,7 @@ where
             TokenKind::Div => todo_token(token),
             TokenKind::Dot => todo_token(token),
             TokenKind::EqualTo => todo_token(token),
-            TokenKind::Bang => todo_token(token),
+            TokenKind::Bang => self.handle_prefix(token),
             TokenKind::NotEqualTo => todo_token(token),
             TokenKind::Or => todo_token(token),
             TokenKind::And => todo_token(token),
@@ -442,7 +545,7 @@ where
             Ok(stmt) => Some(stmt),
             Err(p_error) => {
                 self.exhausted = true;
-                Some(Stmt::Error(p_error))
+                Some(Decl::Error(p_error))
             }
         }
     }
