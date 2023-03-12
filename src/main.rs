@@ -6,6 +6,21 @@ use parser::{Parser, ParserError};
 
 const CONTENTS: &str = include_str!("../testfiles/main.sr");
 
+macro_rules! log {
+    (error: $kind:expr) => {
+        println!();
+        println!("{} unexpected token {}", "error:".red().bold(), $kind);
+    };
+    ($title:expr) => {
+        println!();
+        println!("{}", $title.green().bold());
+    };
+    ($title:expr, $desc:expr) => {
+        println!();
+        println!("{} {}", $title.green().bold(), $desc);
+    };
+}
+
 fn error_at_range(span: &Span) {
     let lines = CONTENTS.lines().enumerate();
     let idx = CONTENTS[..=span.range().start].lines().count() - 1;
@@ -51,34 +66,17 @@ fn print_error(error: ParserError) {
             unexpected,
             expected,
         } => {
-            println!(
-                "{} unexpected token {}",
-                "error:".red().bold(),
-                unexpected.kind
-            );
+            log!(error: unexpected.kind);
             if let Some(kind) = expected {
                 println!("expected {kind}");
             }
             error_at_range(&unexpected.span);
         }
         ParserError::ExpectedExpr(unexpected) => {
-            println!(
-                "{} unexpected token {}",
-                "error:".red().bold(),
-                unexpected.kind
-            );
+            log!(error: unexpected.kind);
             error_at_range(&unexpected.span);
         }
     }
-}
-
-macro_rules! log {
-    ($title:expr) => {
-        println!("{}", $title.green().bold());
-    };
-    ($title:expr, $desc:expr) => {
-        println!("{} {}", $title.green().bold(), $desc);
-    };
 }
 
 // log!("Lexing");
@@ -91,7 +89,6 @@ fn main() {
     let lexer = Lexer::new(CONTENTS);
     let parser = Parser::new(lexer.clone());
 
-    println!();
     log!("Lexed:");
     for token in lexer {
         match token.kind {
@@ -100,7 +97,6 @@ fn main() {
         }
     }
 
-    println!();
     log!("Parsed:");
     for decl in parser {
         match decl {

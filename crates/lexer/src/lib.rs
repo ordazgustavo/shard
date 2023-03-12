@@ -147,7 +147,6 @@ impl<'a> IntoIterator for Lexer<'a> {
     }
 }
 
-#[derive(Clone)]
 pub struct LexerIter<'a> {
     src: &'a str,
     chars: Peekable<CharIndices<'a>>,
@@ -179,8 +178,16 @@ impl<'a> LexerIter<'a> {
         self.handle_literal(TokenKind::Unknown, idx)
     }
 
+    fn next_if(&mut self, ch: char) -> Option<usize> {
+        self.chars.next_if(|(_, c)| *c == ch).map(|(end, _)| end)
+    }
+
+    fn next_is(&mut self, ch: char) -> bool {
+        self.chars.peek().map_or(false, |(_, c)| *c == ch)
+    }
+
     fn handle_dash(&mut self, start: usize) -> Token<'a> {
-        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '>') {
+        if let Some(end) = self.next_if('>') {
             self.handle_span(TokenKind::ThinArrow, start, end)
         } else {
             self.handle_literal(TokenKind::Minus, start)
@@ -188,7 +195,7 @@ impl<'a> LexerIter<'a> {
     }
 
     fn handle_equal(&mut self, start: usize) -> Token<'a> {
-        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
+        if let Some(end) = self.next_if('=') {
             self.handle_span(TokenKind::EqualTo, start, end)
         } else {
             self.handle_literal(TokenKind::Equal, start)
@@ -196,7 +203,7 @@ impl<'a> LexerIter<'a> {
     }
 
     fn handle_bang(&mut self, start: usize) -> Token<'a> {
-        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
+        if let Some(end) = self.next_if('=') {
             self.handle_span(TokenKind::NotEqualTo, start, end)
         } else {
             self.handle_literal(TokenKind::Bang, start)
@@ -204,7 +211,7 @@ impl<'a> LexerIter<'a> {
     }
 
     fn handle_or(&mut self, start: usize) -> Token<'a> {
-        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '|') {
+        if let Some(end) = self.next_if('|') {
             self.handle_span(TokenKind::Or, start, end)
         } else {
             self.handle_unknown(start)
@@ -212,7 +219,7 @@ impl<'a> LexerIter<'a> {
     }
 
     fn handle_and(&mut self, start: usize) -> Token<'a> {
-        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '&') {
+        if let Some(end) = self.next_if('&') {
             self.handle_span(TokenKind::And, start, end)
         } else {
             self.handle_unknown(start)
@@ -220,7 +227,7 @@ impl<'a> LexerIter<'a> {
     }
 
     fn handle_gt(&mut self, start: usize) -> Token<'a> {
-        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
+        if let Some(end) = self.next_if('=') {
             self.handle_span(TokenKind::GreaterThanOrEqual, start, end)
         } else {
             self.handle_literal(TokenKind::GreaterThan, start)
@@ -228,7 +235,7 @@ impl<'a> LexerIter<'a> {
     }
 
     fn handle_lt(&mut self, start: usize) -> Token<'a> {
-        if let Some((end, _)) = self.chars.next_if(|(_, ch)| *ch == '=') {
+        if let Some(end) = self.next_if('=') {
             self.handle_span(TokenKind::LesserThanOrEqual, start, end)
         } else {
             self.handle_literal(TokenKind::LesserThan, start)
@@ -250,14 +257,14 @@ impl<'a> LexerIter<'a> {
 
     fn handle_number(&mut self, start: usize) -> Token<'a> {
         let mut end = start;
-
         let mut is_float = false;
+
         while let Some((idx, ch)) = self
             .chars
             .next_if(|(_, ch)| *ch == '.' || ch.is_ascii_digit())
         {
             end = idx;
-            if is_float && matches!(self.chars.peek(), Some((_, '.'))) {
+            if is_float && self.next_is('.') {
                 break;
             }
             if ch == '.' {
@@ -277,7 +284,7 @@ impl<'a> LexerIter<'a> {
 
         while let Some((idx, _)) = self
             .chars
-            .next_if(|(_, ch)| *ch == '_' || ch.is_alphanumeric())
+            .next_if(|(_, ch)| *ch == '_' || ch.is_ascii_alphanumeric())
         {
             end = idx;
         }
@@ -323,12 +330,9 @@ impl<'a> LexerIter<'a> {
             '>' => self.handle_gt(idx),
             '<' => self.handle_lt(idx),
             '"' => self.handle_string(idx),
-            '0'..='9' => self.handle_number(idx),
-            c @ '_' | c if c.is_alphabetic() => self.handle_ident(idx),
-            c if c.is_whitespace() => {
-                while self.chars.next_if(|(_, ch)| ch.is_whitespace()).is_some() {}
-                return self.next();
-            }
+            c if c.is_ascii_digit() => self.handle_number(idx),
+            c @ '_' | c if c.is_ascii_alphabetic() => self.handle_ident(idx),
+            c if c.is_whitespace() => return self.next(),
             _ => self.handle_unknown(idx),
         };
 
